@@ -1,0 +1,75 @@
+% Copyright (C) 2012  Dmitry V. Levin <ldv@altlinux.org>
+% Permission is granted to copy, distribute and/or modify this document
+% under the terms of the GNU Free Documentation License, Version 1.2
+% or any later version published by the Free Software Foundation;
+% with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+\author{Дмитрий Левин}
+\city{Москва}
+\affiliation{ALT Linux}
+\projecttitle{strace,}
+\projecturl{\url{http://sourceforge.net/projects/strace/}}
+% \date{12 июля 2012~г.}
+\title{strace глазами апстрима}
+
+\maketitle
+
+\begin{abstract}
+Напоминается история проекта,
+рассматриваются основные возможности \emph{strace}
+и нововведения в недавно выпущенных версиях,
+приводятся примеры использования \emph{strace},
+дается обзор \emph{ptrace API} и реализации \emph{strace},
+рассматриваются перспективы дальнейшего развития.
+\end{abstract}
+
+\section*{История проекта}
+\begin{itemize}
+\item 1991-1992: Paul Kranenburg;
+\item 1993: Branko Lankester;
+\item 1993-1996: Richard Sladkey;
+\item 1996-1998: смутное время;
+\item 1998-2002: Wichert Akkerman;
+\item 2002-2009: Roland McGrath;
+\item с 2009.
+\end{itemize}
+
+\section*{Основные возможности и примеры использования}
+\begin{itemize}
+\item Отслеживание порождаемых процессов: -f, -ff.
+\item Мониторинг процессов, существующих на момент запуска: -p.
+\item Сбор статистики: -c, -C, -S.
+\item Дополняющие описатели: -i, -r, -t, -tt, -ttt, -T.
+\item Формат вывода строк: -s, -x, -xx.
+\item Выбор множества отслеживаемых системных вызовов: -e trace=set.
+\item Глубина детализации множества системных вызовов:
+-v, -e abbrev=set, -e verbose=set, -e raw=set.
+\item Выбор множества отслеживаемых сигналов: -e signal=set.
+\item Мониторинг операций чтения/записи: -e read=set, -e write=set.
+\item Конвейеризация: -o.
+\item buildreq.
+\end{itemize}
+
+\section*{Нововведения с 2009 года}
+\begin{itemize}
+\item 4.5.19: прозрачность, новые архитектуры, новые системные вызовы, улучшенные парсеры.
+\item 4.5.20: новый ключ -C, новые архитектуры, новые системные вызовы, улучшенные парсеры.
+\item 4.6: переход на новый Linux ptrace API для реализации отслеживания процессов,
+новые архитектуры, новые системные вызовы, улучшенные парсеры.
+\item 4.7: новые ключи (-y, -P, -I), новые архитектуры, новые системные вызовы, улучшенные парсеры.
+\end{itemize}
+
+\section*{Обзор реализации}
+\begin{itemize}
+\item Linux PTRACE API.
+\item Отслеживание процессов.
+\item Парсеры системных вызовов.
+\item Реализация multiarch.
+\end{itemize}
+
+\section*{Перспективы дальнейшего развития}
+\begin{itemize}
+\item Интерфейс PTRACE\_SEIZE.
+\item Все более и более детализованные парсеры.
+\item Надежный multiarch.
+\end{itemize}
