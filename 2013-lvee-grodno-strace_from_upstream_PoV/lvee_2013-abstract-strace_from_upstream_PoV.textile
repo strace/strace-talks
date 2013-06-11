@@ -1,0 +1,69 @@
+% Copyright (C) 2012-2013  Dmitry V. Levin <ldv@altlinux.org>
+% Permission is granted to copy, distribute and/or modify this document
+% under the terms of the GNU Free Documentation License, Version 1.2
+% or any later version published by the Free Software Foundation;
+% with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+strace is a diagnostic, debugging and instructional tool for monitoring interactions of processes with Linux kernel, including system calls, signal deliveries, and changes of process state.
+This paper briefly recalls long history of the project, describes main strace features and new features added in recent releases, gives overview of the implementation and plans for the future.
+
+h2. History of the project
+
+The long history of strace starts in 1991 when Paul Kranenburg wrote the first version for SunOS.
+
+Paul's strace 1.5 release from 1991 was ported to Linux and enhanced by Branko Lankester.
+
+In 1993, Rick Sladkey merged strace 2.5 for SunOS and the 2nd release of strace for Linux, ported truss features from SVR4, and released a strace that worked on both platforms.  In 1993 -- 1996, he ported strace to SVR4, Solaris, Irix, and Linux 2.0.
+
+In 1996 -- 1999, Wichert Akkerman worked on strace as Debian Developer.
+
+In 1999, Wichert took strace maintainership from Rick and introduced revision control (cvs).  In 1999 -- 2002 he made several releases (versions 3.99, 3.99.1, 4.[0-4]) that included numerous fixes and enhancements, ioctl parser, support for new Linux architectures (powerpc, sparc, arm, mips, s390, ia64, hppa), and FreeBSD on i386.
+
+In 2002 -- 2009 strace was maintained by Roland McGrath.  In first years Roland made several releases per year (versions 4.4.90 -- 4.5.13) with numerous fixes and enhancements, support for new Linux architectures, etc., in 2006 -- 2009 the intensity of releases lowered to 1 -- 2 releases per year. The last strace version signed by Roland was 4.5.19.
+
+Since 2009, strace is maintained by Dmitry Levin who is involved in strace development since 2003.  New stable versions are released once a year, each new release usually contains bug fixes, parser enhancements, updates for new syscalls and ioctls, support for new Linux architectures, support for new Linux ptrace API extensions, and new options.
+
+Key strace developers nowadays are Denys Vlasenko, Dmitry Levin, and Mike Frysinger. Each strace release also contains patches from 10 -- 15 contributers.
+
+
+h2. Main features
+
+strace is a powerful yet easy to use instrument for monitoring interactions of processes with Linux kernel, including system calls, signal deliveries, and changes of process state.  There are many options to control various aspects of strace behaviour: what processes to follow, what kind of information to gather, what to decode and how to display.  Here is a list of most essential options:
+
+* tracing child processes: -f, -ff;
+* attaching to already existing processes: -p;
+* gathering of statistics: -c, -C, -S;
+* supplementary information: -i, -r, -t, -tt, -ttt, -T;
+* string output format: -s, -x, -xx;
+* tracing syscall subsets: -e trace=set;
+* how to decode syscalls: -v, -e abbrev=set, -e verbose=set, -e raw=set;
+* tracing signal subsets: -e signal=set;
+* I/O monitoring: -e read=set, -e write=set;
+* pipelining: -o.
+
+These and other strace options are described in detail in strace(1) manual page.
+
+As of version 4.8, strace supports the following Linux architectures: AArch64 (biarch), ARM, AVR32, Alpha, Blackfin, CRISv10, CRISv32, HPPA, MIPS (o32, n32, n64), Meta, MicroBlaze, OpenRISC 1000, PowerPC, PowerPC (biarch), S390, S390x, SH, SH64, SPARC, SPARC64 (biarch), Tile (biarch), Xtensa, m68k, x32 (biarch), x86, x86-64 (multiarch).
+
+
+h2. New features added in recent releases
+
+Almost every strace release contains such traditional enhancements as  more elaborate syscall decoders, updates for new syscalls, ioctls and kernel constants, and support for new architectures.  Other enhancements include
+
+* 4.5.20: new -C option that combines regular and statistics output;
+* 4.6: new method of following clone, fork, and vfork syscalls using new kernel's explicit facilities for tracing creation of threads and child processes (PTRACE_O_TRACECLONE etc.);
+* 4.6: test suite;
+* 4.7: new -y and -P options to print file descriptor paths and filter by those paths;
+* 4.7: new -I option to control strace interactivity;
+* 4.8: new tracing method using new kernel PTRACE_SEIZE API;
+* 4.8: new -e trace=memory option for tracing memory mapping related syscalls.
+
+
+h2. Implementation overview
+
+Tracing features of strace are implemented using Linux ptrace API, which consists of ptrace(2) syscall for controlling other processes and waitpid(2) syscall for receiving notifications from the kernel.  Processes to be traced (tracees) are first attached to the strace process (tracer).  Attachment and subsequent commands are per thread.  In a multithreaded process, every thread can be individually attached to a tracer, or left not attached and thus not traced.  The traditional way to trace a program is to call fork(2) and have the resulting child to a PTRACE_TRACEME followed by execve(2).  To attach to  already existing processes (-p option), strace employs PTRACE_ATTACH (traditional API) or PTRACE_SEIZE (new API).  While being traced by strace, the tracee will stop each time a signal is delivered, at each entry to or exit  from a syscall.  strace waits for these events using waitpid(2).  Depending on specified options, strace does various ptrace requests (e.g. PTRACE_GETSIGINFO, PTRACE_GETREGSET, PTRACE_GETREGS, PTRACE_PEEKTEXT, PTRACE_PEEKDATA) to inspect the stopped tracee, and causes the tracee to continue using PTRACE_SYSCALL  (traditional API) or PTRACE_LISTEN (new API, in case of group stop).  When strace is finished tracing (e.g. interrupted by a signal), it lets its tracees to continue normal untraced execution by detaching them using PTRACE_DETACH.
+
+
+h2. Plans for the future
+
+strace is a mature project, so the main objective of strace development is perpetual catching up with Linux kernel: adding support for new ptrace extensions and new architectures, adding decoders for new syscalls and enhancing already existing decoders, updating kernel constants etc.  Besides that, we work on strace test suite to cover more use cases.
