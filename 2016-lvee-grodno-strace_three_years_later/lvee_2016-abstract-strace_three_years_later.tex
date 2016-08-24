@@ -1,0 +1,165 @@
+% Copyright (C) 2012-2016  Dmitry V. Levin <ldv@altlinux.org>
+% Permission is granted to copy, distribute and/or modify this document
+% under the terms of the GNU Free Documentation License, Version 1.2
+% or any later version published by the Free Software Foundation;
+% with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+\documentclass[russian,a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{url}
+\begin{document}
+
+\author{Dmitry Levin}
+\title{strace: three years later}
+\date{LVEE 2016}
+
+\maketitle
+
+\begin{abstract}
+strace is a diagnostic, debugging and instructional userspace utility for
+monitoring interactions between processes and the Linux kernel, which include
+system calls, signal deliveries, and changes of process state.
+This paper gives an overview of strace development, lists the most
+noteworthy changes made in recent releases and the new features currently
+being worked on.
+\end{abstract}
+
+\section*{Немного цифр}
+На LVEE 2013 три года назад был представлен обзор проекта strace с 1991 года
+до середины 2013 года\cite{lvee2013}.  Нынешний обзор охватывает значительно более короткий
+период с середины 2013 года по настоящее время, что позволяет рассказать о
+некоторых значимых событиях более подробно.
+
+За минувшие три года было выпущено пять версий strace.
+Периодичность выпусков постепенно сокращалась с одного раза в год
+до одного раза в два-три месяца, одновременно с выпусками ядра Linux.
+
+Интенсивность разработки за эти три года по сравнению с предыдущим
+трехлетним периодом выросла в три раза, число авторов коммитов выросло в
+полтора раза, а число авторов 80\% коммитов уменьшилось в два раза.  Более
+подробно статистическая информация о коммитах и их авторах представлена в
+таблице.
+
+\begin{tabular}{clrrrrrc}
+\hline
+\multicolumn{8}{c}{Число коммитов и их авторов по версиям} \\ \hline
+           &        & \multicolumn{2}{c}{число}    & \multicolumn{3}{c}{число}   & число \\
+дата       & номер  & \multicolumn{2}{c}{коммитов} & \multicolumn{3}{c}{авторов} & авторов 80\% \\
+выпуска    & версии & всего & в год                & прежних & всего & в год     & коммитов \\ \hline
+13.04.2010 & 4.5.20 &       &     &   &    &    &   \\ \hline
+15.03.2011 & 4.6    & 112   & 122 & 5 & 12 & 13 & 4 \\ \hline
+02.05.2012 & 4.7    & 400   & 353 & 3 & 11 & 10 & 2 \\ \hline
+03.06.2013 & 4.8    & 237   & 218 & 4 & 17 & 16 & 3 \\ \hline
+\multicolumn{2}{l}{всего за период} & 749 & 238 & & 33 & 11 & 2 \\ \hline
+\hline
+15.08.2014 & 4.9    & 247   &  206 & 4 & 22 & 18 & 3 \\ \hline
+06.03.2015 & 4.10   & 400   &  719 & 4 & 15 & 27 & 1 \\ \hline
+21.12.2015 & 4.11   & 586   &  737 & 5 & 15 & 19 & 1 \\ \hline
+31.05.2016 & 4.12   & 799   & 1804 & 5 & 16 & 36 & 1 \\ \hline
+26.07.2016 & 4.13   & 182   & 1182 & 4 &  6 & 39 & 1 \\ \hline
+\multicolumn{2}{l}{всего за период} & 2214 & 703 & 8 & 51 & 16 & 1 \\ \hline
+\end{tabular} \bigskip
+
+\section*{Что нового}
+Из наиболее заметных изменений можно отметить следующие нововведения и
+улучшения.
+
+Добавлены новые параметры:
+\begin{description}
+\item[-k] (экспериментальный): печать стека вызовов функций трассируемых
+процессов после каждого трассируемого системного вызова;
+\item[-w] сбор статистики по времени, проведенному трассируемыми процессами
+в системных вызовах;
+\item[-yy] печать протокола и адреса, связанных с трассируемыми сокетами.
+\end{description}
+
+Реализована надежная трассировка процессов, использующих различные ABI ядра
+Linux, в частности, процессов x86 и x32 на x86\_64.
+
+Значительно расширена поддержка системного вызова ioctl.
+
+Реализована поддержка всех системных вызовов, поддерживаемых ядром Linux 4.7.
+
+Обнаружены и исправлены все известные на данный момент случаи не вполне
+корректного декодирования системных вызовов.
+
+Система тестирования strace, в которой три года назад было 5 тестов,
+значительно доработана и на данный момент состоит из 314 тестов, покрывающих
+более 72\% строк исходного кода.
+
+\section*{В работе}
+В рамках GSoC 2016 завершается работа над следующими проектами:
+\begin{description}
+\item[Structured output]: поддержка вывода в машиночитаемом виде в формате
+JSON;
+\item [Netlink socket parsers]: расширяемый парсер данных, передаваемых через
+сокеты семейства netlink;
+\item [Fault injection]: многофункциональный инжектор ошибок в системных
+вызовах.
+\end{description}
+
+Подробнее об этих проектах можно узнать на сайте GSoC 2016 strace
+projects\cite{gsoc2016}.
+
+\section*{Не strace'ом единым}
+В процессе доработки системы тестирования strace были обнаружены и
+исправлены ошибки в других свободных проектах, в частности,
+\begin{description}
+\item [Linux kernel]:
+	\begin{itemize}
+	\item неправильная работа модуля unix\_diag\cite{diag};
+	\item неправильный номер системного вызова fgetxattr на архитектуре
+	sh64\cite{sh64};
+	\item неправильный код возврата системного вызова personality на
+	архитектуре sparc64\cite{sparc64};
+	\item неправильный номер системного вызова restart\_syscall для x32
+	ABI на архитектуре x86\_64\cite{x32};
+	\item неправильная реализация системных вызовов preadv2 и pwritev2
+	для x86 ABI на архитектуре x86\_64\cite{x86};
+	\item kernel panic на архитектуре parisc\cite{parisc};
+	\item kernel panic на ядрах OpenVZ.
+	\end{itemize}
+\item [GNU libc]: некорректная обработка кода возврата системного вызова
+personality\cite{glibc};
+\item [musl libc]: некорректное поведение модификатора формата \%o в семействе
+функций printf\cite{musl}.
+\end{description}
+
+\begin{thebibliography}{9}
+
+\bibitem{lvee2013} LVEE 2013. strace from upstream point of view \\
+\url{https://lvee.org/ru/abstracts/94}
+
+\bibitem{gsoc2016} GSoC 2016 strace projects \\
+\url{https://summerofcode.withgoogle.com/organizations/5106770607341568/#projects}
+
+\bibitem{diag} unix\_diag: fix incorrect sign extension in
+unix\_lookup\_by\_ino \\
+\url{https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=b5f0549231ffb025337be5a625b0ff9f52b016f0}
+
+\bibitem{sh64} sh64: fix \_\_NR\_fgetxattr \\
+\url{https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=2d33fa1059da4c8e816627a688d950b613ec0474}
+
+\bibitem{sparc64} sparc64: fix incorrect sign extension in
+sys\_sparc64\_personality \\
+\url{https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=525fd5a94e1be0776fa652df5c687697db508c91}
+
+\bibitem{x32} x86/signal: Fix restart\_syscall number for x32 tasks \\
+\url{https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=22eab1108781eff09961ae7001704f7bd8fb1dce}
+
+\bibitem{x86} x86: Use compat version for preadv2 and pwritev2 \\
+\url{https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=9a7a076e8e4ffcfec05e3cafe4c4e31d41ddbaa0}
+
+\bibitem{parisc} parisc: fix a bug when syscall number of tracee is \_\_NR\_Linux\_syscalls \\
+\url{https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=9a7a076e8e4ffcfec05e3cafe4c4e31d41ddbaa0}
+
+\bibitem{glibc} Fix linux personality syscall wrapper \\
+\url{https://sourceware.org/git/?p=glibc.git;a=commitdiff;h=e0043e17dfc52fe1702746543127cb4a87232bcd}
+
+\bibitem{musl} fix printf regression with alt-form octal, default precision \\
+\url{http://www.openwall.com/lists/musl/2016/08/04/1}
+
+\end{thebibliography}
+
+\end{document}
