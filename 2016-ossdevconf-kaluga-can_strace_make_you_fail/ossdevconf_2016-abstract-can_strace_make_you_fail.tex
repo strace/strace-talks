@@ -1,0 +1,154 @@
+% Copyright (C) 2012-2016  Dmitry V. Levin <ldv@altlinux.org>
+% Permission is granted to copy, distribute and/or modify this document
+% under the terms of the GNU Free Documentation License, Version 1.2
+% or any later version published by the Free Software Foundation;
+% with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+\author{Dmitry V. Levin}
+\city{Moscow}
+\affiliation{BaseALT}
+\projecttitle{strace}
+\projecturl{\url{https://strace.io}}
+\title{Can strace make you fail?}
+
+\maketitle
+
+\begin{abstract}
+strace is a diagnostic, debugging and instructional userspace utility
+for Linux.  It is used to monitor interactions between processes and the
+Linux kernel, which include system calls, signal deliveries, and changes
+of process state.  This year strace has been extended to tamper with
+tracees using controllable syscall fault injection.
+\end{abstract}
+
+\section{Введение}
+
+strace как инструмент мониторинга взаимодействия пользовательских
+процессов с ядром существует уже почти 25 лет и широко применяется для
+диагностики, отладки и изучения поведения ПО.  Многочисленные параметры
+управления фильтрацией дают возможность пользователю strace легко и
+гибко настраивать отображение системных вызовов и сигналов.  С каждым
+выпуском strace таких возможностей становится больше, а точность
+отображения -- выше.
+
+В этом году Nahim El Atmani, студент лаборатории LSE в École pour
+l'informatique et les techniques avancées (EPITA), в рамках одного из
+проектов GSoC 2016\cite{gsoc} реализовал прототип новой
+функции\cite{nahim} в strace, которая принципиально отличается от всех
+предыдущих и открывает новые направления применения strace.
+
+\section{fault injection как метод тестирования}
+
+Как тестировать обработку программой нетривиально воспроизводимых
+ситуаций вообще, и особенно ошибок, которые не происходят во время
+тестирования?  Например, можно искусственным образом создавать у
+программы представление о том, что тестируемое условие произошло.  Но
+как это сделать, не внося изменений в тестируемую программу?  Можно
+попробовать изменять поведение системных вызовов, например, с помощью
+strace!
+
+\section{strace и системные вызовы}
+
+strace отслеживает системные вызовы, выполняемые подопечными процессами,
+с помощью системных вызовов ptrace и wait4.  ptrace-запросами
+PTRACE\_SYSCALL strace поручает ядру останавливать трассируемые процессы
+при выполнении ими системных вызовов.  Эти процессы на входе в любой
+системный вызов переводятся ядром в состояние syscall-enter-stop, а на
+выходе из любого системного вызова -- в состояние syscall-exit-stop.  Об
+изменении состояния процессов ядро оповещает strace, ожидающий событий в
+wait4.
+
+strace всякий раз, обнаруживая трассируемый процесс в состоянии
+syscall-enter-stop, выясняет номер и параметры системного вызова, после
+чего применяет фильтры, которые на основе этой информации формируют
+решение о том, отображать ли этот системный вызов.  Если системный вызов
+подлежит отображению, выполняется соответствующий парсер, который
+согласно настройкам и семантике этого системного вызова отображает его
+надлежащим образом.  Обработав состояние syscall-enter-stop, strace дает
+ядру запрос PTRACE\_SYSCALL, после которого ядро продолжает выполнять
+приостановленный системный вызов до состояния syscall-exit-stop.
+Обнаружив трассируемый процесс в этом состоянии, strace при
+необходимости выясняет и отображает код возврата и, возможно, другие
+результаты работы системного вызова.  Обработав состояние
+syscall-exit-stop, strace снова дает ядру запрос PTRACE\_SYSCALL, после
+которого трассируемый процесс продолжает работу до следующего системного
+вызова.
+
+\section{fault injection системных вызовов}
+
+ptrace API позволяет не только считывать номер, параметры, и код
+возврата системного вызова, но и менять их.  Например, путем замены
+номера системного вызова в состоянии syscall-enter-stop на $-1$
+происходит замена системного вызова на заведомо несуществующий, а замена
+кода возврата системного вызова в состоянии syscall-exit-stop приводит к
+установке произвольного кода возврата.
+
+Реализованный в strace интерфейс позволяет осуществлять fault injection
+произвольного множества системных вызовов, как всех подряд, так и
+выборочно, например, только $N$-й вызов системного вызова, каждый $N$-й
+вызов, и т.п.  В сочетании с традиционным фильтром по имени файла можно
+осуществлять fault injection системных вызовов, прямо или косвенно
+оперирующих определенными файлами.
+
+\section{Первые находки}
+
+Экспериментальные запуски strace в режиме syscall fault injection сразу
+выявили проблемы с обработкой ошибок в разных программах.  Например,
+python3 не обрабатывает ошибку доступа к устройству /dev/urandom:
+{\tt\tiny
+\begin{verbatim}
+$ strace -P /dev/urandom -e fault=open:1:ENOENT python3
+open("/dev/urandom", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory) (INJECTED)
+Fatal Python error: Failed to open /dev/urandom
+--- SIGSEGV {si_signo=SIGSEGV, si_code=SEGV_MAPERR, si_addr=0x50} ---
++++ killed by SIGSEGV +++
+Segmentation fault
+\end{verbatim}
+}
+
+Еще один пример показывает, что динамический загрузчик не всегда
+проверяет код возврата системного вызова mprotect:
+{\tt\tiny
+\begin{verbatim}
+$ strace -e mprotect -e fault=mprotect:1:EPERM pwd > /dev/null
+mprotect(0x7fabcd00f000, 2097152, PROT_NONE) = -1 EPERM (Operation not permitted) (INJECTED)
+mprotect(0x7fabcd20f000, 16384, PROT_READ) = 0
+mprotect(0x606000, 4096, PROT_READ)     = 0
+mprotect(0x7fabcd441000, 4096, PROT_READ) = 0
++++ exited with 0 +++
+$ strace -e mprotect -e fault=mprotect:2:EPERM pwd > /dev/null
+mprotect(0x7fabcd00f000, 2097152, PROT_NONE) = 0
+mprotect(0x7fabcd20f000, 16384, PROT_READ) = -1 EPERM (Operation not permitted) (INJECTED)
+pwd: error while loading shared libraries: /lib64/libc.so.6: cannot apply additional memory
+protection after relocation: Operation not permitted
++++ exited with 127 +++
+\end{verbatim}
+}
+
+\section{Что дальше?}
+
+Продолжением и расширением функции syscall fault injection могла бы
+стать функция syscall success injection.  Тот же прием, который был
+использован для реализации fault injection, годится и для создания
+видимости успешного завершения системного вызова.  Основная сложность в
+реализации success injection -- сохранение семантики системных вызовов,
+результатами работы которых является не только код возврата, но и,
+например, запись определенных адресов оперативной памяти.
+
+Область применения strace syscall fault injection -- не только
+расширение тестового покрытия и поиск ошибок.  Например, с помощью этой
+функции непривилегированный пользователь может легко организовать
+временное блокирование отдельных системных вызовов и обращений к
+отдельным файлам у определенных процессов, не прибегая к написанию
+seccomp filters.
+
+
+\begin{thebibliography}{9}
+
+\bibitem{gsoc} Google Summer of Code: strace. \\
+ \url{https://summerofcode.withgoogle.com/organizations/5106770607341568/}
+
+\bibitem{nahim} strace syscall fault injection. \\
+ \url{https://brokenpi.pe/tools/strace-fault-injection}
+
+\end{thebibliography}
