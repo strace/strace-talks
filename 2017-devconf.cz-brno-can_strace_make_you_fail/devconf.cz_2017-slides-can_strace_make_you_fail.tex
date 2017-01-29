@@ -1,0 +1,576 @@
+% Copyright (C) 2012-2017  Dmitry V. Levin <ldv@altlinux.org>
+% Permission is granted to copy, distribute and/or modify this document
+% under the terms of the GNU Free Documentation License, Version 1.2
+% or any later version published by the Free Software Foundation;
+% with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+%\documentclass[unicode,aspectratio=169]{beamer}
+\documentclass[unicode]{beamer}
+
+\mode<presentation>
+{
+	\usetheme{Warsaw}
+	\setbeamertemplate{headline}{}
+	\setbeamertemplate{footline}{}
+}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[english]{babel}
+\usepackage{alltt}
+
+\title{\Huge Can strace make you fail?}
+\subtitle{\huge strace syscall fault injection}
+\author{\Huge Dmitry~Levin}
+\date{DevConf.cz 2017}
+
+\logo{\includegraphics[height=0.5cm]{basealt.jpg}}
+
+\begin{document}
+
+\begin{frame}
+\titlepage
+\end{frame}
+
+\begin{frame}[fragile]{What is strace?}
+\begin{itemize}
+	\item A diagnostic, debugging and instructional userspace
+	utility for Linux.
+
+	\item It is used to monitor interactions between processes and
+	the Linux kernel, which include system calls, signal
+	deliveries, and changes of process state.
+
+	\item CLI and multiple filtering capabilities make it a powerful
+	yet easy to use tracing tool.
+
+	\item Last year strace has been extended to tamper with tracees
+	using syscall fault injection.
+\end{itemize}
+\scriptsize
+\begin{block}{\large sample output}
+\begin{verbatim}
+$ strace -s 0 -P /dev/urandom python3 < /dev/null
+open("/dev/urandom", O_RDONLY|O_CLOEXEC) = 3
+fcntl(3, F_GETFD)                       = 0x1 (flags FD_CLOEXEC)
+read(3, ""..., 24)                      = 24
+close(3)                                = 0
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\end{frame}
+
+\begin{frame}{strace as a fault injection tool}
+\begin{block}{\large What is fault injection?}
+	\begin{itemize}
+	\item a software testing technique
+	\item used for improving test coverage
+	\item of error handling code paths
+	\item that might otherwise rarely be followed
+	\item by introducing faults
+	\end{itemize}
+\end{block}
+\begin{block}{\large Where to place strace among other fault injection tools?}
+	\begin{itemize}
+		\item software
+		\item runtime
+		\item syscall interposition
+		\item userspace
+		\item unprivileged
+		\item command-line interface
+	\end{itemize}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{strace syscall fault injection syntax}
+\scriptsize
+\begin{block}{\large strace -e trace=open cat /dev/null}
+\begin{verbatim}
+open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+open("/dev/null", O_RDONLY)             = 3
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\begin{block}{\large strace -e trace=open {\bf -e fault=}{\it open} cat}
+\begin{alltt}
+\textcolor{red}{open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = -1 ENOSYS (Function not im
+plemented) (INJECTED)}
+\textcolor{red}{open("/lib64/tls/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOSYS (Func
+tion not implemented) (INJECTED)}
+\textcolor{red}{open("/lib64/tls/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOSYS (Function no
+t implemented) (INJECTED)}
+\textcolor{red}{open("/lib64/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOSYS (Function
+ not implemented) (INJECTED)}
+\textcolor{red}{open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOSYS (Function not im
+plemented) (INJECTED)}
+cat: error while loading shared libraries: libc.so.6: cannot open shared
+object file: Error 38
++++ exited with 127 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{strace syscall fault injection syntax}
+\scriptsize
+\begin{block}{\large strace -e trace=open cat /dev/null}
+\begin{verbatim}
+open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+open("/dev/null", O_RDONLY)             = 3
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\begin{block}{\large strace -e trace=open {\bf -e fault=}{\it open}{\bf :error=}{\sc ENOENT} \\ cat /dev/null}
+\begin{alltt}
+\textcolor{red}{open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory) (INJECTED)}
+\textcolor{red}{open("/lib64/tls/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory) (INJECTED)}
+\textcolor{red}{open("/lib64/tls/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory) (INJECTED)}
+\textcolor{red}{open("/lib64/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory) (INJECTED)}
+\textcolor{red}{open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory) (INJECTED)}
+\textcolor{red}{open("/usr/lib64/tls/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory) (INJECTED)}
+\textcolor{red}{open("/usr/lib64/tls/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory) (INJECTED)}
+\textcolor{red}{open("/usr/lib64/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory) (INJECTED)}
+\textcolor{red}{open("/usr/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory) (INJECTED)}
+cat: error while loading shared libraries: libc.so.6: cannot open shared object file: No such file or directory
++++ exited with 127 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{strace syscall fault injection syntax}
+\scriptsize
+\begin{block}{\large strace -e trace=open cat /dev/null}
+\begin{verbatim}
+open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+open("/dev/null", O_RDONLY)             = 3
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\begin{block}{\large strace -e trace=open \\ {\bf -e fault=}{\it open}{\bf :when=}{\it 1}{\bf :error=}{\sc EACCES} cat /dev/null}
+\begin{alltt}
+\textcolor{red}{open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = -1 EACCES (Permission deni
+ed) (INJECTED)}
+open("/lib64/tls/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No s
+uch file or directory)
+open("/lib64/tls/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such fil
+e or directory)
+open("/lib64/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such
+file or directory)
+open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+open("/dev/null", O_RDONLY)             = 3
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{strace syscall fault injection syntax}
+\scriptsize
+\begin{block}{\large strace -e trace=open cat /dev/null}
+\begin{verbatim}
+open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+open("/dev/null", O_RDONLY)             = 3
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\begin{block}{\large strace -e trace=open \\ {\bf -e fault=}{\it open}{\bf :when=}{\it 2}{\bf +:error=}{\sc EPERM} cat /dev/null}
+\begin{alltt}
+open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+\textcolor{red}{open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 EPERM (Operation not pe
+rmitted) (INJECTED)}
+\textcolor{red}{open("/lib64/tls/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 EPERM (Opera
+tion not permitted) (INJECTED)}
+\textcolor{red}{open("/lib64/tls/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 EPERM (Operation no
+t permitted) (INJECTED)}
+\textcolor{red}{open("/lib64/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 EPERM (Operation
+not permitted) (INJECTED)}
+\textcolor{red}{open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 EPERM (Operation not pe
+rmitted) (INJECTED)}
+cat: error while loading shared libraries: libc.so.6: cannot open shared
+object file: Operation not permitted
++++ exited with 127 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{strace syscall fault injection syntax}
+\scriptsize
+\begin{block}{\large strace -e trace=open cat /dev/null}
+\begin{verbatim}
+open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+open("/dev/null", O_RDONLY)             = 3
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\begin{block}{\large strace -a30 -e trace=open \\ {\bf -e fault=}{\it open}{\bf :when=}{\it 3}{\bf :error=}{\sc EACCES} cat /dev/null}
+\begin{alltt}
+open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+\textcolor{red}{open("/dev/null", O_RDONLY)   = -1 EACCES (Permission denied) (INJECTED)}
+cat: /dev/null: Permission denied
++++ exited with 1 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{strace syscall fault injection syntax}
+\scriptsize
+\begin{block}{\large strace -a30 -e trace=open cat /dev/null\{,\}\{,\}}
+\begin{verbatim}
+open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+open("/dev/null", O_RDONLY)   = 3
+open("/dev/null", O_RDONLY)   = 3
+open("/dev/null", O_RDONLY)   = 3
+open("/dev/null", O_RDONLY)   = 3
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\begin{block}{\large strace -a30 -e trace=open \\ {\bf -e fault=}{\it open}{\bf :when=}{\it 3}{\bf +}{\it 2}{\bf :error=}{\sc EACCES} \\ cat /dev/null\{,\}\{,\}}
+\begin{alltt}
+open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+\textcolor{red}{open("/dev/null", O_RDONLY)   = -1 EACCES (Permission denied) (INJECTED)}
+cat: /dev/null: Permission denied
+open("/dev/null", O_RDONLY)   = 3
+\textcolor{red}{open("/dev/null", O_RDONLY)   = -1 EACCES (Permission denied) (INJECTED)}
+cat: /dev/null: Permission denied
+open("/dev/null", O_RDONLY)   = 3
++++ exited with 1 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{strace syscall fault injection syntax}
+\scriptsize
+\begin{block}{\large strace -P /dev/null cat /dev/null}
+\begin{verbatim}
+open("/dev/null", O_RDONLY)             = 3
+fstat(3, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 3), ...}) = 0
+fadvise64(3, 0, 0, POSIX_FADV_SEQUENTIAL) = 0
+read(3, "", 131072)                     = 0
+close(3)                                = 0
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\begin{block}{\large strace -a28 -P /dev/null {\bf -e fault=}{\it file} cat /dev/null}
+\begin{alltt}
+\textcolor{red}{open("/dev/null", O_RDONLY) = -1 ENOSYS (Function not implemented) (INJEC
+TED)}
+cat: /dev/null: Function not implemented
++++ exited with 1 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{strace syscall fault injection syntax}
+\scriptsize
+\begin{block}{\large strace -a25 -P /dev/null cat /dev/null}
+\begin{verbatim}
+open("/dev/null", O_RDONLY) = 3
+fstat(3, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 3), ...}) = 0
+fadvise64(3, 0, 0, POSIX_FADV_SEQUENTIAL) = 0
+read(3, "", 131072)      = 0
+close(3)                 = 0
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\begin{block}{\large strace -a25 -P /dev/null {\bf -e fault=}{\it fstat}{\bf :error=}{\sc ENOMEM} cat /dev/null}
+\begin{alltt}
+open("/dev/null", O_RDONLY) = 3
+\textcolor{red}{fstat(3, 0x7ffd970bb080) = -1 ENOMEM (Cannot allocate memory) (INJECTED)}
+cat: /dev/null: Cannot allocate memory
+close(3)                 = 0
++++ exited with 1 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{strace syscall fault injection syntax}
+\scriptsize
+\begin{block}{\large strace -P /dev/null cat /dev/null}
+\begin{verbatim}
+open("/dev/null", O_RDONLY)             = 3
+fstat(3, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 3), ...}) = 0
+fadvise64(3, 0, 0, POSIX_FADV_SEQUENTIAL) = 0
+read(3, "", 131072)                     = 0
+close(3)                                = 0
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\begin{block}{\large strace -P /dev/null {\bf -e fault=}{\it fadvise64} cat /dev/null}
+\begin{alltt}
+open("/dev/null", O_RDONLY)             = 3
+fstat(3, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 3), ...}) = 0
+\textcolor{red}{fadvise64(3, 0, 0, POSIX_FADV_SEQUENTIAL) = -1 ENOSYS (Function not imple
+mented) (INJECTED)}
+read(3, "", 131072)                     = 0
+close(3)                                = 0
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{strace syscall fault injection syntax}
+\scriptsize
+\begin{block}{\large strace -P /dev/null cat /dev/null}
+\begin{verbatim}
+open("/dev/null", O_RDONLY)             = 3
+fstat(3, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 3), ...}) = 0
+fadvise64(3, 0, 0, POSIX_FADV_SEQUENTIAL) = 0
+read(3, "", 131072)                     = 0
+close(3)                                = 0
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\begin{block}{\large strace -a32 -P /dev/null \\ {\bf -e fault=}{\it read}{\bf :error=}{\sc EIO} cat /dev/null}
+\begin{alltt}
+open("/dev/null", O_RDONLY)             = 3
+fstat(3, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 3), ...}) = 0
+fadvise64(3, 0, 0, POSIX_FADV_SEQUENTIAL) = 0
+\textcolor{red}{read(3, 0x7f057432c000, 131072) = -1 EIO (Input/output error) (INJECTED)}
+cat: /dev/null: Input/output error
+close(3)                                = 0
++++ exited with 1 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{strace syscall fault injection syntax}
+\scriptsize
+\begin{block}{\large strace -P /dev/null cat /dev/null}
+\begin{verbatim}
+open("/dev/null", O_RDONLY)             = 3
+fstat(3, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 3), ...}) = 0
+fadvise64(3, 0, 0, POSIX_FADV_SEQUENTIAL) = 0
+read(3, "", 131072)                     = 0
+close(3)                                = 0
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\begin{block}{\large strace -a32 -P /dev/null \\ {\bf -e fault=}{\it read}{\bf :when=}{\it 1}{\bf :error=}{\sc EINTR} cat /dev/null}
+\begin{alltt}
+open("/dev/null", O_RDONLY)             = 3
+fstat(3, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 3), ...}) = 0
+fadvise64(3, 0, 0, POSIX_FADV_SEQUENTIAL) = 0
+\textcolor{red}{read(3, 0x7f057432c000, 131072) = -1 EINTR (Interrupted system call) (INJ
+ECTED)}
+read(3, "", 131072)                     = 0
+close(3)                                = 0
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{strace syscall fault injection syntax}
+\scriptsize
+\begin{block}{\large strace -a25 -P /dev/null cat /dev/null}
+\begin{verbatim}
+open("/dev/null", O_RDONLY) = 3
+fstat(3, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 3), ...}) = 0
+fadvise64(3, 0, 0, POSIX_FADV_SEQUENTIAL) = 0
+read(3, "", 131072)      = 0
+close(3)                 = 0
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\begin{block}{\large strace -a25 -P /dev/null \\ {\bf -e fault=}{\it close}{\bf :error=}{\sc EINTR} cat /dev/null}
+\begin{alltt}
+open("/dev/null", O_RDONLY) = 3
+fstat(3, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 3), ...}) = 0
+fadvise64(3, 0, 0, POSIX_FADV_SEQUENTIAL) = 0
+read(3, "", 131072)      = 0
+\textcolor{red}{close(3)                 = -1 EINTR (Interrupted system call) (INJECTED)}
+cat: /dev/null: Interrupted system call
++++ exited with 1 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{examples: access control: path or descriptor arguments}
+\scriptsize
+\begin{block}{\large strace -P /etc/passwd \\ -e fault=file:error=EACCES -e fault=desc:error=EPERM \\ stat . /etc/passwd > /dev/null}
+\begin{alltt}
+\textcolor{red}{open("/etc/passwd", O_RDONLY|O_CLOEXEC) = -1 EPERM (Operation not permitt
+ed) (INJECTED)}
+\textcolor{red}{lstat("/etc/passwd", 0x7ffd282659d0)    = -1 EACCES (Permission denied) (
+INJECTED)}
+stat: cannot stat '/etc/passwd': Permission denied
++++ exited with 1 +++
+\end{alltt}
+\end{block}
+\begin{block}{\large strace -a25 -P /etc/passwd -e fault=desc:error=EPERM \\ cat < /etc/passwd}
+\begin{alltt}
+\textcolor{red}{fstat(0, 0x7ffd6c14daa0) = -1 EPERM (Operation not permitted) (INJECTED)}
+cat: -: Operation not permitted
+\textcolor{red}{close(0)                 = -1 EPERM (Operation not permitted) (INJECTED)}
+cat: closing standard input: Operation not permitted
++++ exited with 1 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{examples: python3.5 bug}
+\begin{block}{\large Error opening /dev/urandom}
+\scriptsize
+\begin{alltt}
+$ strace -P /dev/urandom -e fault=open:error=ENOENT python3 < /dev/null
+\textcolor{red}{open("/dev/urandom", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or dir
+ectory) (INJECTED)}
+Fatal Python error: Failed to open /dev/urandom
+--- SIGSEGV {si_signo=SIGSEGV, si_code=SEGV_MAPERR, si_addr=0x50} ---
++++ killed by SIGSEGV +++
+Segmentation fault
+\end{alltt}
+\end{block}
+\begin{block}{\large Error reading /dev/urandom}
+\scriptsize
+\begin{alltt}
+$ strace -a30 -P /dev/urandom -e fault=read:error=EIO python3 < /dev/null
+open("/dev/urandom", O_RDONLY|O_CLOEXEC) = 3
+fcntl(3, F_GETFD)             = 0x1 (flags FD_CLOEXEC)
+\textcolor{red}{read(3, 0x8db610, 24)         = -1 EIO (Input/output error) (INJECTED)}
+Fatal Python error: Failed to read bytes from /dev/urandom
+--- SIGSEGV {si_signo=SIGSEGV, si_code=SEGV_MAPERR, si_addr=0x50} ---
++++ killed by SIGSEGV +++
+Segmentation fault
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{examples: glibc dynamic linker bug}
+\begin{block}{\large First mprotect invocation: without a proper check}
+\scriptsize
+\begin{alltt}
+$ strace -e mprotect -efault=mprotect:when=1:error=EPERM pwd > /dev/null
+\textcolor{red}{mprotect(0x7fabcd00f000, 2097152, PROT_NONE) = -1 EPERM (Operation not pe
+rmitted) (INJECTED)}
+mprotect(0x7fabcd20f000, 16384, PROT_READ) = 0
+mprotect(0x606000, 4096, PROT_READ)     = 0
+mprotect(0x7fabcd441000, 4096, PROT_READ) = 0
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\begin{block}{\large Second mprotect invocation: with a proper check}
+\scriptsize
+\begin{alltt}
+$ strace -e mprotect -efault=mprotect:when=2+:error=EPERM pwd > /dev/null
+mprotect(0x7fabcd00f000, 2097152, PROT_NONE) = 0
+\textcolor{red}{mprotect(0x7fabcd20f000, 16384, PROT_READ) = -1 EPERM (Operation not perm
+itted) (INJECTED)}
+pwd: error while loading shared libraries: /lib64/libc.so.6: cannot apply
+ additional memory protection after relocation: Operation not permitted
++++ exited with 127 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}{strace workflow: entering syscall}
+\begin{block}{\large tracee}
+	invokes a syscall
+\end{block}
+\begin{block}{\large kernel}
+	puts the tracee into {\sc syscall-enter-stop} state
+\end{block}
+\begin{block}{\large strace}
+\begin{itemize}
+	\item awakens
+	\item fetches the syscall number and arguments
+	\item applies filters
+	\item may print something
+	\item tells the kernel to let the tracee go on
+\end{itemize}
+\end{block}
+\end{frame}
+
+\begin{frame}{strace workflow: exiting syscall}
+\begin{block}{\large kernel}
+\begin{itemize}
+	\item executes the syscall
+	\item puts the tracee into {\sc syscall-exit-stop} state
+\end{itemize}
+\end{block}
+\begin{block}{\large strace}
+\begin{itemize}
+	\item awakens
+	\item may fetch the syscall return code and some arguments
+	\item may print something
+	\item tells the kernel to let the tracee go on
+\end{itemize}
+\end{block}
+\end{frame}
+
+\begin{frame}{strace workflow: tampering with syscalls}
+\begin{itemize}
+	\item awakens
+	\item fetches the syscall number and arguments
+	\item applies filters
+	\item \textcolor{red}{\bf may tamper with the syscall number and arguments}
+	\item may print something
+	\item tells the kernel to let the tracee go on
+	\item {\it the kernel executes the syscall}
+	\item awakens
+	\item may fetch the syscall return code and some arguments
+	\item \textcolor{red}{\bf may tamper with the syscall return code and arguments}
+	\item may print something
+	\item tells the kernel to let the tracee go on
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{strace signal injection}
+\scriptsize
+\begin{block}{\large strace -a20 -P precious.txt unlink precious.txt}
+\begin{verbatim}
+unlink("precious.txt") = 0
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\begin{block}{\large strace -a20 -P precious.txt \\ -e fault=unlink:error=EACCES:signal=ABRT \\ unlink precious.txt}
+\begin{alltt}
+\textcolor{red}{unlink("precious.txt") = -1 EACCES (Permission denied) (INJECTED)}
+--- SIGABRT {si_signo=SIGABRT, si_code=SI_KERNEL} ---
++++ killed by SIGABRT (core dumped) +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{strace syscall success injection}
+\scriptsize
+\begin{block}{\large strace -P precious.txt unlink precious.txt}
+\begin{verbatim}
+unlink("precious.txt")                  = 0
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\begin{block}{\large strace -P precious.txt -efault=unlink:retval=0 \\ unlink precious.txt}
+\begin{alltt}
+\textcolor{red}{unlink("precious.txt")                  = 0 (INJECTED)}
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+\begin{frame}{Questions?}
+\begin{block}{\large homepage}
+	https://strace.io
+\end{block}
+\begin{block}{\large strace.git}
+	git://git.code.sf.net/p/strace/code.git
+
+	https://github.com/strace/strace.git
+\end{block}
+\begin{block}{\large mailing list}
+	strace-devel@lists.sourceforge.net
+\end{block}
+\begin{block}{\large IRC channel}
+	\#strace@freenode
+\end{block}
+\begin{block}{\large GSoC 2016 project by Nahim El Atmani}
+	https://brokenpi.pe/tools/strace-fault-injection
+\end{block}
+\end{frame}
+
+\end{document}
