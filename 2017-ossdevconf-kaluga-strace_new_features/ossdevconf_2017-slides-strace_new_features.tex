@@ -1,0 +1,335 @@
+% Copyright (C) 2012-2017  Dmitry V. Levin <ldv@altlinux.org>
+% Permission is granted to copy, distribute and/or modify this document
+% under the terms of the GNU Free Documentation License, Version 1.2
+% or any later version published by the Free Software Foundation;
+% with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+\documentclass[unicode]{beamer}
+
+\mode<presentation>
+{
+	\usetheme{Warsaw}
+	\setbeamertemplate{headline}{}
+	\setbeamertemplate{footline}{}
+}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[english]{babel}
+\usepackage{alltt}
+
+\title{\Huge strace: new features}
+\author{\Huge Dmitry~Levin}
+\date{OSSDEVCONF 2017}
+
+\logo{\includegraphics[height=1cm]{strace-straus-1781x3426.png}}
+
+\begin{document}
+
+%%%%%%%
+\begin{frame}
+\titlepage
+\end{frame}
+
+%%%%%%%
+\begin{frame}{New features since 4.13}
+\begin{block}{\large Released}
+\begin{description}
+	\item[4.16]: Syscall tampering and fault injection
+	\item[4.17]: Syscall specification improvements
+	\item[4.18, 4.19]: Netlink socket parsers
+\end{description}
+\end{block}
+\begin{block}{\large GSoC 2017 projects}
+\begin{itemize}
+	\item Advanced syscall filtering syntax
+	\item Advanced syscall tampering and filtering with Lua
+	\item Advanced syscall information tool
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call tampering and fault injection}
+\begin{block}{\large traditional syscall fault injection}
+-e fault=\textit{set}[:error=\textit{errno}][:when=\textit{expr}]
+\end{block}
+\begin{block}{\large strace -a28 -e trace=open \\ {\bf -e fault=}{\it open}{\bf :when=}{\it 3}{\bf :error=}{\sc EACCES} ca
+t /dev/null}
+\begin{alltt}
+open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+\textcolor{red}{open("/dev/null", O_RDONLY) = -1 EACCES (Permission denied) (INJECTED)}
+cat: /dev/null: Permission denied
++++ exited with 1 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call tampering and fault injection}
+\begin{block}{\large syscall tampering improvements}
+\begin{itemize}
+	\item \textcolor{red}{return value injection}
+	\item signal injection
+\end{itemize}
+\end{block}
+-e inject=\textit{set}[:error=\textit{errno}|:retval=\textit{value}][:signal=\textit{sig}][:when=\textit{expr}]
+\begin{block}{\large strace -e trace=open \\ {\bf -e fault=}{\it open}{\bf :when=}{\it 3}{\bf :retval=}{\sc 42}
+cat /dev/null}
+\begin{alltt}
+open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+\textcolor{red}{open("/dev/null", O_RDONLY)             = 42 (INJECTED)}
+cat: /dev/null: Bad file descriptor
+cat: /dev/null: Bad file descriptor
++++ exited with 1 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call tampering and fault injection}
+\begin{block}{\large syscall tampering improvements}
+\begin{itemize}
+	\item return value injection
+	\item \textcolor{red}{signal injection}
+\end{itemize}
+\end{block}
+-e inject=\textit{set}[:error=\textit{errno}|:retval=\textit{value}][:signal=\textit{sig}][:when=\textit{expr}]
+\begin{block}{\large strace -a20 -P precious.txt \\ -e fault=unlink:error=EACCES:signal=ABRT \\ unlink precious.txt}
+\begin{alltt}
+\textcolor{red}{unlink("precious.txt") = -1 EACCES (Permission denied)
+ (INJECTED)}
+--- SIGABRT {si_signo=SIGABRT, si_code=SI_KERNEL} ---
++++ killed by SIGABRT (core dumped) +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call specification improvements}
+\begin{block}{\large syscall classes now have \% prefix}
+strace -e trace=\%\textit{class}
+\end{block}
+\begin{block}{\large added new syscall classes}
+\%stat, \%lstat, \%fstat, \%\%stat, \%statfs, \%fstatfs, \%\%statfs
+\end{block}
+\begin{block}{\large strace -y -e \%\%stat ls /var/empty}
+\begin{alltt}
+fstat(3</etc/ld.so.cache>, {st_mode=S_IFREG|0644, st_size=30341, ...}) = 0
+...
+fstat(3</proc/filesystems>, {st_mode=S_IFREG|0444, st_size=0, ...}) = 0
+stat("/var/empty", {st_mode=S_IFDIR|0555, st_size=40, ...}) = 0
+fstat(3</var/empty>, {st_mode=S_IFDIR|0555, st_size=40, ...}) = 0
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call specification improvements}
+\begin{block}{\large added support of regular expressions}
+strace -e trace=/\textit{regexp}
+\end{block}
+\begin{block}{\large strace -e 'trace=/\textasciicircum(.*\_)?statv?fs' df / >/dev/null}
+\begin{alltt}
+statfs("/", {f_type=TMPFS_MAGIC, f_bsize=4096, f_blocks=29042980, f_bfree=19704764, f_bavail=19704764, f_files=16501693, f_ffree=15397338, f_fsid={val=[0, 0]}, f_namelen=255, f_frsize=4096, f_flags=ST_VALID|ST_NOSUID|ST_RELATIME}) = 0
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\begin{block}{\large strace -e \%statfs df / >/dev/null}
+\begin{alltt}
+statfs("/", {f_type=TMPFS_MAGIC, f_bsize=4096, f_blocks=29042980, f_bfree=19704764, f_bavail=19704764, f_files=16501693, f_ffree=15397338, f_fsid={val=[0, 0]}, f_namelen=255, f_frsize=4096, f_flags=ST_VALID|ST_NOSUID|ST_RELATIME}) = 0
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call specification improvements}
+\begin{block}{\large added support of conditional descriptions}
+strace -e trace=?\textit{set}
+\end{block}
+\begin{block}{\large strace -e trace=?statx tests/statx}
+\begin{alltt}
+statx(AT_FDCWD, "/dev/full", AT_STATX_SYNC_AS_STAT,
+STATX_ALL, {stx_mask=STATX_BASIC_STATS, stx_attributes=0,
+stx_mode=S_IFCHR|0666, stx_size=0, ...}) = 0
+\end{alltt}
+\end{block}
+\begin{block}{\large strace -e trace=/statx does not work}
+\begin{alltt}
+strace: invalid system call '/statx'
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Netlink socket parsers}
+\begin{block}{Result of joined efforts}
+\begin{description}
+\item[GSoC 2016]: Fabien Siron, mentored by Gabriel Laskar
+\item[GSoC 2017]: JingPiao Chen
+\end{description}
+\end{block}
+\begin{block}{Currently supported netlink protocols}
+\begin{itemize}
+\item NETLINK\_AUDIT
+\item NETLINK\_CRYPTO
+\item NETLINK\_KOBJECT\_UEVENT
+\item NETLINK\_NETFILTER
+\item NETLINK\_ROUTE
+\item NETLINK\_SELINUX
+\item NETLINK\_SOCK\_DIAG
+\item NETLINK\_XFRM
+\item NETLINK\_GENERIC
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{\small hsh-run --mount=/proc $--$ strace -e trace=sendto,recvmsg ip route list}
+
+{\texttt\tiny
+\fontsize{4pt}{4pt}\selectfont
+sendto(3, \{\{len=40, type=RTM\_GETROUTE, flags=NLM\_F\_REQUEST|NLM\_F\_DUMP, seq=1357924680, pid=0\},
+ \textcolor{blue}{\{rtm\_family=AF\_UNSPEC, rtm\_dst\_len=0, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_UNSPEC, rtm\_protocol=RTPROT\_UNSPEC, rtm\_scope=RT\_SCOPE\_UNIVERSE, rtm\_type=RTN\_UNSPEC, rtm\_flags=0\}},
+  \textcolor{red}{\{nla\_len=0, nla\_type=RTA\_UNSPEC\}}\}, 40, 0, NULL, 0) = 40
+
+recvmsg(3, \{msg\_name=\{sa\_family=AF\_NETLINK, nl\_pid=0, nl\_groups=00000000\}, msg\_namelen=12, msg\_iov=[\{iov\_base=[
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_LINK, rtm\_type=RTN\_BROADCAST, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, 127.0.0.0\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, 127.0.0.1\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}},
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=8, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_HOST, rtm\_type=RTN\_LOCAL, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, 127.0.0.0\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, 127.0.0.1\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}},
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_HOST, rtm\_type=RTN\_LOCAL, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, 127.0.0.1\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, 127.0.0.1\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}},
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_LINK, rtm\_type=RTN\_BROADCAST, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, 127.255.255.255\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, 127.0.0.1\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}}
+], iov\_len=32768\}], msg\_iovlen=1, msg\_controllen=0, msg\_flags=0\}, 0) = 240 \\
+...
+%broadcast 127.0.0.0 dev lo table local proto kernel scope link src 127.0.0.1  \\
+%local 127.0.0.0/8 dev lo table local proto kernel scope host src 127.0.0.1 \\
+%local 127.0.0.1 dev lo table local proto kernel scope host src 127.0.0.1 \\
+%broadcast 127.255.255.255 dev lo table local proto kernel scope link src 127.0.0.1 \\
+%recvmsg(3, \{msg\_name=\{sa\_family=AF\_NETLINK, nl\_pid=0, nl\_groups=00000000\}, msg\_namelen=12, msg\_iov=[\{iov\_base=\{\{len=20, type=NLMSG\_DONE, flags=NLM\_F\_MULTI, seq=1505349241, pid=12345\}, 0\}, iov\_len=32768\}], msg\_iovlen=1, msg\_controllen=0, msg\_flags=0\}, 0) = 20
+}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Advanced syscall filtering syntax}
+\begin{block}{new syntax}
+[\textbf{\textit{action(}}]\textbf{\textit{filter\_expression}}[;\textbf{\textit{arg1}}[;\textbf{\textit{arg2}}...]][)]
+\begin{description}
+\item[\textit{action}] is one of \textbf{trace}, \textbf{abbrev}, \textbf{verbose},
+\textbf{raw}, \textbf{read}, \textbf{write}, \textbf{fault},
+\textbf{inject}, or \textbf{stacktrace};
+\item[\textit{arnN}] are arguments of \textbf{\textit{action}};
+\item[\textit{filter\_expression}] is a combination of filters.
+\end{description}
+\end{block}
+\begin{block}{supported filters}
+\begin{description}
+\item[syscall \textit{set}]: set of syscalls described by \textbf{\textit{set}};
+\item[fd \textit{fd1}\dots]: set of syscalls operating with descriptor numbers
+described by \textbf{\textit{fd1}}\dots;
+\item[path \textit{path}]: set of syscalls operating with paths
+described by \textbf{\textit{path}}.
+\end{description}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Advanced syscall filtering syntax}
+\begin{block}{\large echo -n foo | strace -e 'fd 1' cat >/dev/null}
+\begin{alltt}
+fstat(1, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 3), ...}) = 0
+write(1, "foo", 3)                      = 3
+close(1)                                = 0
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\begin{block}{\large strace -y -s4 -e 'syscall read' -e 'read(path /dev/zero)' \\ head -c5 /dev/zero}
+\begin{verbatim}
+read(3</lib64/libc-2.26.so>, "\177ELF"..., 832) = 832
+read(3</dev/zero>, "\0\0\0\0"..., 5)    = 5
+ | 00000  00 00 00 00 00            .....            |
++++ exited with 0 +++
+\end{verbatim}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Advanced syscall filtering syntax}
+\begin{block}{\large strace -ve 'syscall \%file and not syscall \%desc' cat /dev/null}
+\begin{alltt}
+execve("/usr/bin/cat", ["/usr/bin/cat", "/dev/null"], []) = 0
+access("/etc/ld.so.preload", R_OK) = -1 ENOENT (No such file or directory)
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+
+\begin{block}{\large strace -ve 'syscall \%file and \\ !(syscall \%desc || path /usr/bin/cat)' \\ /usr/bin/cat /dev/null}
+\begin{alltt}
+strace: Requested path '/usr/bin/cat' resolved into '/bin/cat'
+access("/etc/ld.so.preload", R_OK) = -1 ENOENT (No such file or directory)
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Advanced syscall filtering syntax}
+\begin{block}{\large strace -k -e 'fd 1' cat /dev/null}
+\begin{alltt}
+fstat(1, {st_mode=S_IFCHR|0620, st_rdev=makedev(136, 5), ...}) = 0
+ > /lib64/libc-2.24.so(__fxstat64+0x14) [0xdab54]
+ > /bin/cat() [0x1bb9]
+ > /lib64/libc-2.24.so(__libc_start_main+0xf0) [0x20400]
+ > /bin/cat() [0x258b]
+close(1)                                = 0
+ > /lib64/libc-2.24.so(_IO_file_close+0xb) [0x7195b]
+ > /lib64/libc-2.24.so(_IO_file_close_it+0x13c) [0x7302c]
+ > /lib64/libc-2.24.so(fclose+0x1a3) [0x669a3]
+ > /bin/cat() [0x5daa]
+ > /bin/cat() [0x2a92]
+ > /lib64/libc-2.24.so(__locale_getenv+0x140) [0x35c60]
+ > /lib64/libc-2.24.so(exit+0x1a) [0x35cba]
+ > /lib64/libc-2.24.so(__libc_start_main+0xf7) [0x20407]
+ > /bin/cat() [0x258b]
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+{
+\setbeamertemplate{logo}{}
+\begin{frame}{Questions?}
+	\begin{columns}
+		\column{7cm}
+\begin{block}{\large homepage}
+	https://strace.io
+\end{block}
+\begin{block}{\large strace.git}
+	https://github.com/strace/strace.git
+
+	git://git.code.sf.net/p/strace/code.git
+\end{block}
+\begin{block}{\large mailing list}
+	strace-devel@lists.sourceforge.net
+\end{block}
+\begin{block}{\large IRC channel}
+	\#strace@freenode
+\end{block}
+		\column{3cm}
+			\centerline{\includegraphics[height=7cm]{strace-straus-1781x3426.png}}
+	\end{columns}
+\end{frame}
+}
+
+\end{document}

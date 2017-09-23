@@ -1,0 +1,140 @@
+% Copyright (C) 2012-2017  Dmitry V. Levin <ldv@altlinux.org>
+% Permission is granted to copy, distribute and/or modify this document
+% under the terms of the GNU Free Documentation License, Version 1.2
+% or any later version published by the Free Software Foundation;
+% with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+\author{Дмитрий Левин}
+\city{Москва}
+\affiliation{Базальт СПО}
+\projecttitle{strace}
+\projecturl{\url{https://strace.io}}
+\title{strace: новые возможности}
+
+\maketitle
+
+\begin{abstract}
+strace --- инструмент для отслеживания и влияния на взаимодействия
+пользовательских процессов и ядра Linux: системных вызовов, сигналов
+и изменений состояния процесса.  За минувший год в strace реализовано
+много нового и интересного.
+\end{abstract}
+
+\section{Введение}
+
+strace как инструмент мониторинга взаимодействия пользовательских процессов с
+ядром существует уже почти 26 лет и широко применяется для диагностики, отладки
+и изучения поведения ПО.  Многочисленные параметры управления фильтрацией дают
+возможность пользователю strace легко и гибко настраивать отображение системных
+вызовов и сигналов.  С каждым выпуском strace таких возможностей становится
+больше, а точность отображения --- выше.
+
+Начиная с версии 4.13, выпущенной летом прошлого года, расписание выпусков
+новых версий strace синхронизировано с расписанием выпусков новых версий ядра
+linux.  Таким образом новые интерфейсы, добавляемые в релизы ядра linux,
+сопровождаются соответствующими парсерами, добавляемыми в релизы strace.
+
+Помимо многочисленных улучшений отображения системных вызовов, за минувший год
+в strace было реализовано много нового и интересного.
+
+\section{System Call Specification}
+Синтаксис описания множества системных вызовов существенно расширился:
+\begin{itemize}
+\item В описании имён системных вызовов теперь поддерживаются регулярные выражения: \\
+strace -e trace=/\textit{regexp}
+\item В описании множества системных вызовов поддерживаются описания,
+которым не соответствует ни одного системного вызова: \\
+strace -e trace=?\textit{set}
+\item Имена классов системных вызовов теперь начинаются с префикса \%: \\
+strace -e trace=\%\textit{class} \\
+Прежний способ именования классов без префикса \% ещё поддерживается,
+но уже считается устаревшим.
+\item Добавлены новые классы системных вызовов:
+\begin{description}
+	\item[\%stat]: stat, stat64, oldstat и их вариации;
+	\item[\%lstat]: lstat, lstat64, oldlstat и их вариации;
+	\item[\%fstat]: fstat, fstat64, fstatat64, newfstatat, oldfstat и их вариации;
+	\item[\%\%stat]: stat, lstat, fstat, fstatat, statx и их вариации;
+	\item[\%statfs]: эквивалент /\textasciicircum(.*\_)?statv?fs;
+	\item[\%fstatfs]: эквивалент /fstatv?fs;
+	\item[\%\%statfs]: эквивалент /statv?fs|fsstat|ustat.
+\end{description}
+\end{itemize}
+
+\section{System call tampering и fault injection}
+Механизм syscall fault injection, прототип которого подробно рассматривался на
+этой конференции год назад, был доработан и включён в strace, начиная с версии
+4.15, выпущенной в декабре прошлого года.  По сравнению с прототипом, синтаксис
+syscall fault injection изменился и выглядит следующим образом:
+
+-e fault=\textit{set}[:error=\textit{errno}][:when=\textit{expr}]
+
+Начиная с версии 4.16, выпущенной в феврале прошлого года, реализован более
+общий механизм вмешательства в системные вызовы, который, помимо syscall fault
+injection, позволяет осуществлять syscall return value injection и signal
+injection.  Интерфейс этого нового механизма выглядит следующим образом:
+
+-e inject=\textit{set}[:error=\textit{errno}|:retval=\textit{value}][:signal=\textit{sig}][:when=\textit{expr}]
+
+\section{Netlink socket parsers}
+В strace версии 4.19, выпущенной в начале сентября, реализовано детальное
+декодирование трафика, проходящего через netlink sockets, что позволяет
+использовать strace для отладки приложений, работающих с netlink-протоколами.
+Так, например, может выглядеть вывод парсера трафика семейства NETLINK\_ROUTE:
+
+{\texttt\tiny
+\$ hsh-run --mount=/proc -- strace -e trace=sendto,recvmsg ip r l t all \\
+\fontsize{4pt}{4pt}\selectfont
+sendto(3, \{\{len=40, type=RTM\_GETROUTE, flags=NLM\_F\_REQUEST|NLM\_F\_DUMP, \\seq=1357924680, pid=0\}, \{rtm\_family=AF\_UNSPEC, rtm\_dst\_len=0, rtm\_src\_len=0, rtm\_tos=0,\\ rtm\_table=RT\_TABLE\_UNSPEC, rtm\_protocol=RTPROT\_UNSPEC, \\rtm\_scope=RT\_SCOPE\_UNIVERSE, rtm\_type=RTN\_UNSPEC, rtm\_flags=0\}, \{nla\_len=0, \\nla\_type=RTA\_UNSPEC\}\}, 40, 0, NULL, 0) = 40 \\
+recvmsg(3, \{msg\_name=\{sa\_family=AF\_NETLINK, nl\_pid=0, nl\_groups=00000000\}, \\msg\_namelen=12, msg\_iov=[\{iov\_base=[\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\}, \{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_LINK, rtm\_type=RTN\_BROADCAST, rtm\_flags=0\}, [\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, \\RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, 127.0.0.0\}, \{\{nla\_len=8, nla\_type=\\RTA\_PREFSRC\}, 127.0.0.1\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]\}, \{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\}, \{rtm\_family=\\AF\_INET, rtm\_dst\_len=8, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, \\rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_HOST, rtm\_type=RTN\_LOCAL, \\rtm\_flags=0\}, [\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=\\RTA\_DST\}, 127.0.0.0\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, 127.0.0.1\}, \{\{nla\_len=8, nla\_type=\\RTA\_OIF\}, if\_nametoindex("lo")\}]\}, \{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\}, \{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_HOST, rtm\_type=RTN\_LOCAL, rtm\_flags=0\}, [\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, \\RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, 127.0.0.1\}, \{\{nla\_len=8, nla\_type=\\RTA\_PREFSRC\}, 127.0.0.1\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]\}, \{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\}, \{rtm\_family=\\AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, \\rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_LINK, rtm\_type=RTN\_BROADCAST, rtm\_flags=0\}, [\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=\\RTA\_DST\}, 127.255.255.255\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, 127.0.0.1\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]\}], iov\_len=32768\}], msg\_iovlen=1, msg\_controllen=0, msg\_flags=0\}, 0) = 240 \\
+broadcast 127.0.0.0 dev lo table local proto kernel scope link src 127.0.0.1  \\
+local 127.0.0.0/8 dev lo table local proto kernel scope host src 127.0.0.1 \\
+local 127.0.0.1 dev lo table local proto kernel scope host src 127.0.0.1 \\
+broadcast 127.255.255.255 dev lo table local proto kernel scope link src 127.0.0.1 \\
+recvmsg(3, \{msg\_name=\{sa\_family=AF\_NETLINK, nl\_pid=0, nl\_groups=00000000\}, \\msg\_namelen=12, msg\_iov=[\{iov\_base=\{\{len=20, type=NLMSG\_DONE, flags=NLM\_F\_MULTI, seq=\\1505349241, pid=12345\}, 0\}, iov\_len=32768\}], msg\_iovlen=1, msg\_controllen=0, msg\_flags=0\}, 0) = 20
+}
+
+\section{Advanced syscall filtering syntax}
+
+В рамках GSoC 2017 Николай Марчук реализовал прототип ещё более гибкого
+синтаксиса фильтрации системных вызовов:
+
+[\textbf{\textit{action}}(]\textbf{\textit{filter\_expression}}[;\textbf{\textit{arg1}}[;\textbf{\textit{arg2}}...]][)]
+
+где
+\begin{description}
+\item[\textit{action}] это \textbf{trace}, \textbf{abbrev}, \textbf{verbose},
+\textbf{raw}, \textbf{read}, \textbf{write}, \textbf{fault},
+\textbf{inject}, или \textbf{stacktrace};
+\item[\textit{arnN}] это аргументы \textbf{\textit{action}};
+\item[\textit{filter\_expression}] состоит из комбинации фильтров,
+каждый их которых, в свою очередь, состоит из имени фильтра и аргументов фильтра.
+\end{description}
+
+Поддерживаются следующие фильтры:
+\begin{description}
+\item[syscall \textit{set}]: множество системных вызовов,
+соответствующих описанию \textbf{\textit{set}}.
+\item[fd \textit{fd1}\dots]: множество системных вызовов,
+оперирующих дескрипторами, соответствующими описанию \textbf{\textit{fd1}}\dots;
+\item[path \textit{path}]: множество системных вызовов,
+оперирующих файлами, соответствующими описанию \textbf{\textit{path}}.
+\end{description}
+
+Комбинация фильтров осуществляется с помощью операторов
+\textbf{not}, \textbf{and}, \textbf{or} и круглых скобок.
+
+Более подробно новый синтаксис описан в strace(1).
+
+\section{Advanced syscall tampering and filtering with Lua/LuaJIT}
+В рамках GSoC 2017 Виктор Крапивенский реализовал прототип Lua-скриптинга,
+который позволяет не только производить фильтрацию и подмену системных вызовов
+с большей гибкостью, но и производить success injection с сохранением семантики
+системного вызова, которая, в частности, может заключаться в записи
+определённых данных в адресное пространство процесса.
+Подробнее об этом расскажет автор в своём докладе.
+
+\section{Advanced syscall information tool}
+В рамках GSoC 2017 Эдгар Казиахмедов реализовал прототип новой утилиты asinfo,
+предназначенной для получения разнообразной информации о системных вызовых.
+Подробнее об этом расскажет автор в своём докладе.
