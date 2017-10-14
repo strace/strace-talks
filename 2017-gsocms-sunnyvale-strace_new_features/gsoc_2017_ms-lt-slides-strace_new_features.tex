@@ -1,0 +1,306 @@
+% Copyright (C) 2012-2017  Dmitry V. Levin <ldv@altlinux.org>
+% Permission is granted to copy, distribute and/or modify this document
+% under the terms of the GNU Free Documentation License, Version 1.2
+% or any later version published by the Free Software Foundation;
+% with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+\documentclass[unicode]{beamer}
+
+\mode<presentation>
+{
+	\usetheme{Warsaw}
+	\setbeamertemplate{headline}{}
+	\setbeamertemplate{footline}{}
+}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[english]{babel}
+\usepackage{alltt}
+
+\title{\Huge strace \\ new features}
+\author{\huge Dmitry~Levin}
+\date{\Huge GSoC 2017}
+
+\logo{\includegraphics[height=1cm]{strace-straus-1781x3426.png}}
+
+\begin{document}
+
+%%%%%%%
+\begin{frame}
+\titlepage
+\end{frame}
+
+%%%%%%%
+\begin{frame}{strace GSoC 2017 projects}
+\begin{block}{\large Netlink socket parsers}
+student: JingPiao~Chen
+\end{block}
+\begin{block}{\large Advanced syscall filtering syntax}
+student: Nikolay~Marchuk
+\end{block}
+\begin{block}{\large Advanced syscall tampering and filtering with Lua}
+student: Victor~Krapivensky
+\end{block}
+\begin{block}{\large Advanced syscall information tool}
+student: Edgar~Kaziakhmedov
+\end{block}
+mentors: Dmitry~Levin, Eugene~Syromyatnikov
+\end{frame}
+
+%%%%%%%
+\begin{frame}{strace GSoC 2017 projects: netlink socket parsers}
+\begin{block}{Netlink socket parsers}
+\begin{description}
+\item[GSoC 2016]: student: Fabien~Siron, mentor: Gabriel~Laskar
+\item[GSoC 2017]: student: JingPiao~Chen, mentor: Dmitry~Levin
+\end{description}
+\end{block}
+\begin{block}{Currently supported netlink protocols}
+\begin{itemize}
+\item NETLINK\_AUDIT
+\item NETLINK\_CRYPTO
+\item NETLINK\_KOBJECT\_UEVENT
+\item NETLINK\_NETFILTER
+\item NETLINK\_ROUTE
+\item NETLINK\_SELINUX
+\item NETLINK\_SOCK\_DIAG
+\item NETLINK\_XFRM
+\item NETLINK\_GENERIC
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{\small before: strace -e trace=sendto,recvmsg ip route list}
+
+{\texttt\tiny
+\fontsize{6pt}{6pt}\selectfont
+sendto(3, \{\{len=40, type=0x1a /* NLMSG\_??? */, flags=NLM\_F\_REQUEST|0x300, seq=1507842992, pid=0\}, \\
+\textcolor{blue}{"\textbackslash{}2\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}10\textbackslash{}0\textbackslash{}35\textbackslash{}0\textbackslash{}1\textbackslash{}0\textbackslash{}0\textbackslash{}0"}
+\}, 40, 0, NULL, 0) = 40
+
+\medskip
+
+recvmsg(3, \{msg\_name=\{sa\_family=AF\_NETLINK, nl\_pid=0, nl\_groups=00000000\}, msg\_namelen=12, msg\_iov=[\{iov\_base=[
+\textcolor{brown}{\{\{len=60, type=0x18 /* NLMSG\_??? */, flags=NLM\_F\_MULTI, seq=1507842992, pid=23852\}, \\
+\textcolor{blue}{"\textbackslash{}2 \textbackslash{}0\textbackslash{}0\textbackslash{}377\textbackslash{}2\textbackslash{}375\textbackslash{}3\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}10\textbackslash{}0\textbackslash{}17\textbackslash{}0\textbackslash{}377\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}10\textbackslash{}0\textbackslash{}1\textbackslash{}0\textbackslash{}177\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}10\textbackslash{}0\textbackslash{}7\textbackslash{}0"...}\}},
+\textcolor{brown}{\{\{len=60, type=0x18 /* NLMSG\_??? */, flags=NLM\_F\_MULTI, seq=1507842992, pid=23852\}, \\
+\textcolor{blue}{"\textbackslash{}2\textbackslash{}10\textbackslash{}0\textbackslash{}0\textbackslash{}377\textbackslash{}2\textbackslash{}376\textbackslash{}2\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}10\textbackslash{}0\textbackslash{}17\textbackslash{}0\textbackslash{}377\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}10\textbackslash{}0\textbackslash{}1\textbackslash{}0\textbackslash{}177\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}10\textbackslash{}0\textbackslash{}7\textbackslash{}0"...}\}},
+\textcolor{brown}{\{\{len=60, type=0x18 /* NLMSG\_??? */, flags=NLM\_F\_MULTI, seq=1507842992, pid=23852\}, \\
+\textcolor{blue}{"\textbackslash{}2 \textbackslash{}0\textbackslash{}0\textbackslash{}377\textbackslash{}2\textbackslash{}376\textbackslash{}2\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}10\textbackslash{}0\textbackslash{}17\textbackslash{}0\textbackslash{}377\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}10\textbackslash{}0\textbackslash{}1\textbackslash{}0\textbackslash{}177\textbackslash{}0\textbackslash{}0\textbackslash{}1\textbackslash{}10\textbackslash{}0\textbackslash{}7\textbackslash{}0"...}\}},
+\textcolor{brown}{\{\{len=60, type=0x18 /* NLMSG\_??? */, flags=NLM\_F\_MULTI, seq=1507842992, pid=23852\}, \\
+\textcolor{blue}{"\textbackslash{}2 \textbackslash{}0\textbackslash{}0\textbackslash{}377\textbackslash{}2\textbackslash{}375\textbackslash{}3\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}10\textbackslash{}0\textbackslash{}17\textbackslash{}0\textbackslash{}377\textbackslash{}0\textbackslash{}0\textbackslash{}0\textbackslash{}10\textbackslash{}0\textbackslash{}1\textbackslash{}0\textbackslash{}177\textbackslash{}377\textbackslash{}377\textbackslash{}377\textbackslash{}10\textbackslash{}0\textbackslash{}7\textbackslash{}0"...}\}}
+], iov\_len=32768\}], msg\_iovlen=1, msg\_controllen=0, msg\_flags=0\}, 0) = 240
+
+...
+}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{\small after: strace -e trace=sendto,recvmsg ip route list}
+
+{\texttt\tiny
+\fontsize{4pt}{4pt}\selectfont
+sendto(3, \{\{len=40, type=RTM\_GETROUTE, flags=NLM\_F\_REQUEST|NLM\_F\_DUMP, seq=1357924680, pid=0\},
+ \textcolor{blue}{\{rtm\_family=AF\_UNSPEC, rtm\_dst\_len=0, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_UNSPEC, rtm\_protocol=RTPROT\_UNSPEC, rtm\_scope=RT\_SCOPE\_UNIVERSE, rtm\_type=RTN\_UNSPEC, rtm\_flags=0\}},
+  \textcolor{red}{\{nla\_len=0, nla\_type=RTA\_UNSPEC\}}\}, 40, 0, NULL, 0) = 40
+
+\medskip
+
+recvmsg(3, \{msg\_name=\{sa\_family=AF\_NETLINK, nl\_pid=0, nl\_groups=00000000\}, msg\_namelen=12, msg\_iov=[\{iov\_base=[
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_LINK, rtm\_type=RTN\_BROADCAST, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, 127.0.0.0\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, 127.0.0.1\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}},
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=8, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_HOST, rtm\_type=RTN\_LOCAL, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, 127.0.0.0\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, 127.0.0.1\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}},
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_HOST, rtm\_type=RTN\_LOCAL, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, 127.0.0.1\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, 127.0.0.1\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}},
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_LINK, rtm\_type=RTN\_BROADCAST, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, 127.255.255.255\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, 127.0.0.1\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}}
+], iov\_len=32768\}], msg\_iovlen=1, msg\_controllen=0, msg\_flags=0\}, 0) = 240 \\
+
+...
+}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{strace GSoC 2017 projects: advanced syscall filtering syntax}
+\begin{block}{Advanced syscall filtering syntax}
+\begin{description}
+\item[student]: Nikolay~Marchuk
+\item[mentors]: Eugene~Syromyatnikov, Dmitry~Levin
+\end{description}
+\end{block}
+\begin{block}{\large strace -ve 'syscall \%file and not syscall \%desc' cat /dev/null}
+\begin{alltt}
+execve("/usr/bin/cat", ["/usr/bin/cat", "/dev/null"], []) = 0
+access("/etc/ld.so.preload", R_OK) = -1 ENOENT (No such file or directory)
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+
+\begin{block}{\large strace -ve 'syscall \%file and \\ !(syscall \%desc || path /usr/bin/cat)' \\ /usr/bin/cat /dev/null}
+\begin{alltt}
+access("/etc/ld.so.preload", R_OK) = -1 ENOENT (No such file or directory)
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{strace GSoC 2017 projects: advanced syscall filtering syntax}
+\begin{block}{\large strace -k -e 'fd 1' cat /dev/null}
+\begin{alltt}
+fstat(1, {st_mode=S_IFCHR|0620, st_rdev=makedev(136, 5), ...}) = 0
+ > /lib64/libc-2.24.so(__fxstat64+0x14) [0xdab54]
+ > /bin/cat() [0x1bb9]
+ > /lib64/libc-2.24.so(__libc_start_main+0xf0) [0x20400]
+ > /bin/cat() [0x258b]
+close(1)                                = 0
+ > /lib64/libc-2.24.so(_IO_file_close+0xb) [0x7195b]
+ > /lib64/libc-2.24.so(_IO_file_close_it+0x13c) [0x7302c]
+ > /lib64/libc-2.24.so(fclose+0x1a3) [0x669a3]
+ > /bin/cat() [0x5daa]
+ > /bin/cat() [0x2a92]
+ > /lib64/libc-2.24.so(__locale_getenv+0x140) [0x35c60]
+ > /lib64/libc-2.24.so(exit+0x1a) [0x35cba]
+ > /lib64/libc-2.24.so(__libc_start_main+0xf7) [0x20407]
+ > /bin/cat() [0x258b]
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{strace GSoC 2017 projects: Lua scripting}
+\begin{block}{\large Advanced syscall tampering and filtering with Lua}
+\begin{description}
+\item[student]: Victor~Krapivensky
+\item[mentors]: Eugene~Syromyatnikov, Dmitry~Levin
+\end{description}
+\end{block}
+\begin{block}{Features available with Lua scripting}
+\begin{itemize}
+\item proper system call success injection
+\item without breaking system call semantics
+\item writing into tracee's memory
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{strace GSoC 2017 projects: Lua scripting}
+\begin{alltt}
+\small
+$ uname
+Linux
+$ strace -l pretend.lua -qq -etrace=none uname
+NeverMindOS
+
+$ cat pretend.lua
+ffi = require 'ffi'
+f = assert(io.popen([[cpp - <<EOF | grep -v '^#'
+#include <sys/utsname.h>
+EOF]], 'r'))
+ffi.cdef(f:read('*a'))
+f:close()
+assert(strace.hook('uname', 'exiting', function(tcp)
+if tcp.u_rval == -1 then return end
+local u = assert(strace.read_obj(tcp.u_arg[0], 'struct utsname'))
+ffi.copy(u.sysname, 'NeverMindOS')
+assert(strace.write_obj(tcp.u_arg[0], u))
+end))
+\end{alltt}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{strace GSoC 2017 projects: syscall information tool}
+\begin{block}{\large Advanced syscall information tool}
+\begin{description}
+\item[student]: Edgar~Kaziakhmedov
+\item[mentors]: Eugene~Syromyatnikov, Dmitry~Levin
+\end{description}
+\end{block}
+\begin{block}{asinfo features}
+\begin{itemize}
+\item lists syscalls by various selection parameters,
+e.g. number, name, group, and regex
+\item processes any subset of many architectures supported by strace
+\item prints in human-readable or script-friendly format
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{strace GSoC 2017 projects: syscall information tool}
+\begin{alltt}
+$ asinfo --set-arch x86\_64 --set-abi all --get-sname \%\%stat
+|    |              | x86\_64 | x86\_64 | x86\_64 |
+|  N | Syscall name |  64bit |    x32 |  32bit |
+|  1 |        fstat |      5 |      5 |    108 |
+|  2 |      fstat64 |      - |      - |    197 |
+|  3 |    fstatat64 |      - |      - |    300 |
+|  4 |        lstat |      6 |      6 |    107 |
+|  5 |      lstat64 |      - |      - |    196 |
+|  6 |   newfstatat |    262 |    262 |      - |
+|  7 |     oldfstat |      - |      - |     28 |
+|  8 |     oldlstat |      - |      - |     84 |
+|  9 |      oldstat |      - |      - |     18 |
+| 10 |         stat |      4 |      4 |    106 |
+| 11 |       stat64 |      - |      - |    195 |
+| 12 |        statx |    332 |    332 |    383 |
+\end{alltt}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{strace GSoC 2017 projects: syscall information tool}
+\begin{alltt}
+$ asinfo --set-arch x86_64 --set-abi all --get-sname /read
+|    |                  | x86\_64 | x86\_64 | x86\_64 |
+|  N |     Syscall name |  64bit |    x32 |  32bit |
+|  1 |  get\_thread\_area |    211 |      - |    244 |
+|  2 |          pread64 |     17 |     17 |    180 |
+|  3 |           preadv |    295 |    534 |    333 |
+|  4 |          preadv2 |    327 |    546 |    378 |
+|  5 | process\_vm\_readv |    310 |    539 |    347 |
+|  6 |             read |      0 |      0 |      3 |
+|  7 |        readahead |    187 |    187 |    225 |
+|  8 |          readdir |      - |      - |     89 |
+|  9 |         readlink |     89 |     89 |     85 |
+| 10 |       readlinkat |    267 |    267 |    305 |
+| 11 |            readv |     19 |    515 |    145 |
+| 12 |  set\_thread\_area |    205 |      - |    243 |
+\end{alltt}
+\end{frame}
+
+%%%%%%%
+{
+\setbeamertemplate{logo}{}
+\begin{frame}{Questions?}
+	\begin{columns}
+		\column{7cm}
+\begin{block}{\large homepage}
+	https://strace.io
+\end{block}
+\begin{block}{\large strace.git}
+	https://github.com/strace/strace.git
+
+	git://git.code.sf.net/p/strace/code.git
+\end{block}
+\begin{block}{\large mailing list}
+	strace-devel@lists.sourceforge.net
+\end{block}
+\begin{block}{\large IRC channel}
+	\#strace@freenode
+\end{block}
+		\column{3cm}
+			\centerline{\includegraphics[height=7cm]{strace-straus-1781x3426.png}}
+	\end{columns}
+\end{frame}
+}
+
+\end{document}
