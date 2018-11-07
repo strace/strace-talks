@@ -1,0 +1,569 @@
+% Copyright (C) 2012-2018 Dmitry V. Levin <ldv@altlinux.org>
+% Permission is granted to copy, distribute and/or modify this document
+% under the terms of the GNU Free Documentation License, Version 1.2
+% or any later version published by the Free Software Foundation;
+% with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+\documentclass[unicode,aspectratio=169]{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[english]{babel}
+\usepackage{alltt}
+\usepackage{hyperref}
+
+\pgfdeclareimage[height=1cm]{strace-corner-logo}{strace-straus.pdf}
+\pgfdeclareimage[height=0.9cm]{lpc-corner-logo}{lpc_weblogo-2017.png}
+\pgfdeclareimage[height=2cm]{title-logo}{basealt.jpg}
+
+\usetheme{Warsaw}
+\setbeamertemplate{headline}{}
+\setbeamertemplate{footline}{%
+	\pgfuseimage{lpc-corner-logo}%
+	\hfill%
+	\pgfuseimage{strace-corner-logo}%
+}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{logo}{}
+\setbeamercovered{transparent}
+
+\title{\Huge What could be done in the kernel \\ to make strace happy}
+\author{\Large Dmitry~Levin}
+%\institute[BaseALT]{\large BaseALT}
+\date{\Large Linux Plumbers Conference 2018}
+\titlegraphic{\pgfuseimage{title-logo}}
+
+\begin{document}
+
+%%%%%%%
+\begin{frame}
+\titlepage
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Problems\hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{enumerate}
+\large
+\item There is no kernel API to find out whether the tracee is entering or exiting syscall.
+\item There is no reliable way to distinguish between x86\_64 and x86 syscalls.
+\item There is no kernel API to invoke \textbf{wait4} syscall with a different signal mask (like \textbf{pselect6} and \textbf{ppoll}).
+\item The time precision provided by \textbf{struct rusage} is too low for syscall statistics (\textbf{strace -c}).
+\item There is no proper kernel API to translate between tracer and tracee views of pids.
+
+\smallskip
+\hrule
+\smallskip
+
+\item There is no way to obtain network protocol details for descriptors of tracees running in different namespaces (\textbf{strace -yy}).
+\item There are no consistent detailed declarative syscall descriptions, this forces every user to reinvent its own wheel and catch up with the kernel.
+\item strace is slow, perf can lose data
+\end{enumerate}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Problem 1: whether the tracee is entering or exiting syscall? \hfill [\insertframenumber/\inserttotalframenumber]}
+\LARGE
+
+\begin{block}{Problem}
+Both \textbf{syscall-enter-stop} and \textbf{syscall-exit-stop} \\
+look the same for the tracer, \\
+there is no kernel API to distinguish them.
+\end{block}
+
+\begin{block}{Workaround}
+strace does its best to keep track of the sequence of ptrace events.
+When attaching to a tracee inside exec, however,
+its first syscall stop is \textbf{\textit{very likely}} going to be
+\textbf{syscall-exit-stop} instead of \textbf{syscall-enter-stop}, \\
+the workaround is fragile.
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Problem 2: whether the invoked syscall is x86\_64 or x86? \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{Problem}
+There is no reliable way to distinguish between x86\_64 and x86 syscalls.
+\end{block}
+
+\begin{block}{Current practice}
+\scriptsize
+\begin{alltt}
+union \{
+    struct x86_64_user_regs_struct    x86_64_r;
+    struct i386_user_regs_struct      i386_r;
+\} x86_regs_union;
+struct iovec x86_io = \{
+    .iov_base = &x86_regs_union,
+    .iov_len = sizeof(x86_regs_union)
+\};
+rc = ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &x86_io);
+\ldots
+if (x86_io.iov_len == sizeof(x86_regs_union.i386_r)) \{
+    scno = x86_regs_union.i386_r_regs.orig_eax;
+    currpers = 1;
+\} else \{
+    scno = x86_regs_union.x86_64_r.orig_rax;
+    currpers = 0;
+\}
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Problem 2: whether the invoked syscall is x86\_64 or x86? \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{Problem}
+\small
+In infamous case of int 0x80 on x86\_64 the PTRACE\_GETREGSET approach does not work.
+\end{block}
+
+\begin{block}{Example}
+\small
+\begin{alltt}
+$ cat int_0x80.c
+#include <stdio.h>
+int main(void) \{
+    /* 200 is __NR_getgid32 on x86 and __NR_tkill on x86_64. */
+    __asm__("movq $246, %rsi; movq $135, %rdi; movq $200, %rax; int $0x80");
+    printf("getegid returns %d{\textbackslash}n", getegid());
+    return 0;
+\}
+$ gcc -Wall -O2 int_0x80.c
+$ strace -qq -etrace=tkill,/getegid ./a.out
+\textcolor{red}{tkill(135, 246)                         = 500}
+getegid()                               = 500
+getegid returns 500
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Proposed solution: PTRACE\_GET\_SYSCALL\_INFO \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{Extend the ptrace API with PTRACE\_GET\_SYSCALL\_INFO request, \\
+use it \textbf{instead of} PTRACE\_GETREGSET et al}
+\scriptsize
+\begin{alltt}
+struct ptrace_syscall_info \{
+    __u8    op;  /* 0 for entry, 1 for exit */
+    __u8    __pad0[7];
+    union \{
+        struct \{
+            __s32   nr;
+            __u32   arch;
+            __u64   ip;
+            __u64   args[6];
+        \} entry_info;
+        struct \{
+            __s64   rval;
+            __u8    is_error;
+            __u8    __pad2[7];
+        \} exit_info;
+    \};
+\};
+\end{alltt}
+\end{block}
+\scriptsize
+RFC patch and discussion: \url{https://lkml.org/lkml/2018/11/7/313}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Problem 3: invoking wait4 with a different signal mask \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{strace main loop in case of delay injection enabled}
+\begin{alltt}
+for (;;) \{
+    \textcolor{red}{/* What if the timer has expired at this point?  */}
+    pid = wait4(-1, &status, \_\_WALL, &rusage);
+    handle\_tracee(pid, status, &rusage);
+\}
+\end{alltt}
+\end{block}
+
+\begin{block}{Problem}
+There is no kernel API to invoke \textbf{wait4} syscall with a different signal mask, \\
+similar to \textbf{pselect6} extension over \textbf{select} and \textbf{ppoll} over \textbf{poll}.
+\end{block}
+
+\begin{block}{Workaround}
+strace does its best to implement a race-free workaround \\
+by doing a lot of non-trivial work inside a signal handler.
+
+This is way too complex and very fragile.
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Proposed solution: \textbf{pwait6} syscall \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Add \textbf{pwait6} syscall}
+Similar to \textbf{pselect6} extension over \textbf{select}
+and \textbf{ppoll} over \textbf{poll}, \\
+add \textbf{pwait6} syscall
+which is \textbf{wait4} with additional signal mask arguments:
+\begin{alltt}
+pid_t
+wait4(pid_t pid, int *wstatus,
+      int options, struct rusage *rusage);
+pid_t
+pwait6(pid_t pid, int *wstatus,
+       int options, struct rusage *rusage,
+       \textcolor{red}{const sigset_t *sigmask, size_t sigsetsize});
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%
+\begin{frame}[fragile]{Problem 4: time precision limitations of \textbf{struct rusage} \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{The time precision provided by \textbf{struct rusage} is too low for syscall statistics}
+\scriptsize
+\begin{alltt}
+$ strace -c -e%file pwd > /dev/null
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 53.09    0.000043          43         1           execve
+ 30.86    0.000025          12         2           openat
+ 16.05    0.000013          13         1         1 access
+  0.00    0.000000           0         1           getcwd
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.000081                     5         1 total
+
+$ strace -c -e%file pwd > /dev/null
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.000009           9         1           getcwd
+  0.00    0.000000           0         1         1 access
+  0.00    0.000000           0         1           execve
+  0.00    0.000000           0         2           openat
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.000009                     5         1 total
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Proposed solution: \textbf{pwait6} syscall \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{Use a better structure than \textbf{struct rusage} in the new \textbf{pwait6} syscall}
+Replace \textbf{struct rusage} argument of the new \textbf{pwait6} syscall with \textbf{struct rusage\_ts64}:
+\begin{alltt}
+struct rusage \{
+    struct \textcolor{red}{timeval} ru_utime; /* user CPU time used */
+    struct \textcolor{red}{timeval} ru_stime; /* system CPU time used */
+    \ldots
+\}
+\end{alltt}
+\begin{alltt}
+struct rusage_ts64 \{
+    struct \textcolor{red}{timespec64} ru_utime; /* user CPU time used */
+    struct \textcolor{red}{timespec64} ru_stime; /* system CPU time used */
+    \ldots
+\}
+\end{alltt}
+struct \textbf{timespec64} is chosen over struct \textbf{timespec} to avoid 32-bit time\_t overflow.
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Problem 5: no translation of pids \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{Problem}
+PID namespaces have been introduced without a proper kernel API
+to translate between tracer and tracee views of pids.
+\end{block}
+
+\begin{block}{strace users are getting confused by PID namespaces: \\ \url{https://bugzilla.redhat.com/1035433}}
+\scriptsize
+\begin{alltt}
+# strace -qq -ff -e clone -o s.log unshare --pid -- sh -c 'sh -c "sh -c true & wait" & wait'
+# ls s.log.*
+s.log.4567  s.log.4568  s.log.\textcolor{red}{4569}
+# grep \^ s.log.*
+s.log.4567:clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|CLONE_CHILD_SETTID|SIGCHLD, \(\longrightarrow\)
+           child_tidptr=0x7fa7f9adba10) = 4568
+s.log.4567:--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, \(\longrightarrow\)
+           si_pid=4568, si_uid=0, si_status=0, si_utime=0, si_stime=0} ---
+s.log.4568:clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|CLONE_CHILD_SETTID|SIGCHLD, \(\longrightarrow\)
+           child_tidptr=0x7fe0f586aa10) = \textcolor{red}{2}
+s.log.4568:--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, \(\longrightarrow\)
+           si_pid=\textcolor{red}{2}, si_uid=0, si_status=0, si_utime=0, si_stime=0} ---
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Problem 5: no translation of pids \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{Problem}
+PID namespaces have been introduced without a proper kernel API
+to translate between tracer and tracee views of pids.
+\end{block}
+
+\begin{block}{strace users are getting confused by PID namespaces: \\ \url{https://bugzilla.redhat.com/1035433}}
+\scriptsize
+\begin{alltt}
+# strace -qq -ff -e clone -o s.log unshare --pid -- sh -c 'sh -c "sh -c true & wait" & wait'
+# ls s.log.*
+s.log.4567  s.log.4568  s.log.\textcolor{red}{4569}
+# grep \^ s.log.*
+s.log.4567:clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|CLONE_CHILD_SETTID|SIGCHLD, \(\longrightarrow\)
+           child_tidptr=0x7fa7f9adba10) = 4568
+s.log.4567:--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, \(\longrightarrow\)
+           si_pid=4568, si_uid=0, si_status=0, si_utime=0, si_stime=0} ---
+s.log.4568:clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|CLONE_CHILD_SETTID|SIGCHLD, \(\longrightarrow\)
+           child_tidptr=0x7fe0f586aa10) = \textcolor{red}{2}\textcolor{green}{<4569>}
+s.log.4568:--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, \(\longrightarrow\)
+           si_pid=\textcolor{red}{2}\textcolor{green}{<4569>}, si_uid=0, si_status=0, si_utime=0, si_stime=0} ---
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Proposed solution: \textbf{translate\_pid} syscall \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{Add \textbf{translate\_pid} syscall proposed by Konstantin Khlebnikov: \\ \url{https://lkml.org/lkml/2018/6/1/788}}
+\begin{alltt}
+pid_t translate_pid(pid_t pid, int source, int target);
+\end{alltt}
+
+pid namespaces are referred by file descriptors opened to proc files
+\texttt{/proc/[pid]/ns/pid} or \texttt{/proc/[pid]/ns/pid\_for\_children}.
+
+Negative argument points to the current pid namespace.
+
+Return value: \\ pid in the target pid namespace or zero if the task has no pid there.
+
+Error codes:
+\begin{description}
+\item[EBADF]: source or target is not a valid open file descriptor
+\item[EINVAL]: file descriptor does not refer to a pid namespace
+\item[ESRCH]: task not found in the source namespace
+\end{description}
+
+Translation can breach pid namespace isolation and return pids from outer pid
+namespaces iff process already has file descriptor for these namespaces.
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Proposed solution: \textbf{translate\_pid} syscall \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\textbf{translate\_pid} examples provided by Konstantin Khlebnikov}
+\begin{alltt}
+translate_pid(pid, ns, -1)      - translate pid to our pid namespace
+translate_pid(pid, -1, ns)      - translate pid to other pid namespace
+translate_pid(pid, -1, ns) > 0  - is pid reachable from ns?
+translate_pid(1, ns1, ns2) > 0  - is ns1 inside ns2?
+translate_pid(1, ns1, ns2) == 0 - is ns1 outside ns2?
+translate_pid(1, ns1, ns2) == 1 - is ns1 equal to ns2?
+\end{alltt}
+\end{block}
+
+\begin{block}{revision history}
+\scriptsize
+\begin{description}
+\item[v1]: \url{https://lkml.org/lkml/2015/9/15/411}
+\item[v2]: \url{https://lkml.org/lkml/2015/9/24/278}
+\item[v3]: \url{https://lkml.org/lkml/2015/9/25/290}
+\item[v4]: \url{https://lkml.org/lkml/2017/10/13/177}
+\item[v5]: \url{https://lkml.org/lkml/2018/4/4/677}
+\item[v6]: \url{https://lkml.org/lkml/2018/6/1/788}
+\end{description}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Problem 6: strace and tracees running in different net namespaces \hfill [\insertframenumber/\inserttotalframenumber]}
+\small
+\begin{block}{Problem}
+strace -yy chromium-browser doesn't show network protocol details
+because NETLINK\_SOCK\_DIAG does not report sockets of tracees running in different network namespaces:
+
+\url{https://lists.strace.io/pipermail/strace-devel/2018-September/008374.html}
+\end{block}
+
+\begin{block}{Example}
+Connected sockets should ve reported this way becase socketpair always generates a pair of connected sockets:
+\begin{alltt}
+socketpair(AF\_UNIX, SOCK\_STREAM, 0, [27<UNIX:[\textcolor{red}{7162769->7162770}]>, 28<UNIX:[\textcolor{red}{7162770->7162769}]>]) = 0
+\end{alltt}
+
+If the tracee runs in a different network namespaces, the output generated by strace looks as if these sockets are unconnected:
+\begin{alltt}
+socketpair(AF\_UNIX, SOCK\_STREAM, 0, [223<UNIX:[\textcolor{red}{7162686}]>, 224<UNIX:[\textcolor{red}{7162687}]>]) = 0
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Problem 7: no detailed declarative syscall descriptions in kernel \hfill [\insertframenumber/\inserttotalframenumber]}
+
+\begin{block}{Problem}
+There are no consistent detailed declarative machine readable syscall descriptions,
+this forces every user to reinvent its own wheel and catch up with the kernel.
+\end{block}
+
+\begin{block}{Current practice}
+\begin{description}
+\item[strace]: A lot of manual work has been done to implement parsers of all syscalls in C,
+some of these parsers are quite complex, there is a test suite with 85\% coverage.
+\item[libc]: Every libc has its own wrappers for some subset of syscalls,
+some of these wrappers are machine generated.
+\item[syzkaller]: Detailed declarative machine readable descriptions.
+\item[others]: Sanitizers, valgrind.
+\end{description}
+\end{block}
+
+\begin{block}{Proposed solution}
+Provide detailed declarative machine readable descriptions for all syscalls in the kernel.
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Problem 7: no detailed declarative syscall descriptions in kernel \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{hsh-run --mount=/proc $--$ strace -e trace=sendto,recvmsg ip route list}
+\tiny
+\begin{alltt}
+sendto(3, \{\{len=40, type=RTM\_GETROUTE, flags=NLM\_F\_REQUEST|NLM\_F\_DUMP, seq=1357924680, pid=0\},
+ \textcolor{blue}{\{rtm\_family=AF\_UNSPEC, rtm\_dst\_len=0, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_UNSPEC, rtm\_protocol=RTPROT\_UNSPEC, rtm\_scope=RT\_SCOPE\_UNIVERSE, rtm\_type=RTN\_UNSPEC, rtm\_flags=0\}},
+  \textcolor{red}{\{nla\_len=0, nla\_type=RTA\_UNSPEC\}}\}, 40, 0, NULL, 0) = 40
+
+\smallskip
+recvmsg(3, \{msg\_name=\{sa\_family=AF\_NETLINK, nl\_pid=0, nl\_groups=00000000\}, msg\_namelen=12, msg\_iov=[\{iov\_base=[
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_LINK, rtm\_type=RTN\_BROADCAST, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, inet\_addr("127.0.0.0")\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, inet\_addr("127.0.0.1")\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}},
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=8, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_HOST, rtm\_type=RTN\_LOCAL, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, inet\_addr("127.0.0.0")\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, inet\_addr("127.0.0.1")\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}},
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_HOST, rtm\_type=RTN\_LOCAL, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, inet\_addr("127.0.0.1")\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, inet\_addr("127.0.0.1")\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}},
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_LINK, rtm\_type=RTN\_BROADCAST, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, inet\_addr("127.255.255.255")\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, inet\_addr("127.0.0.1")\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}}
+], iov\_len=32768\}], msg\_iovlen=1, msg\_controllen=0, msg\_flags=0\}, 0) = 240 \\
+\ldots
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Problem 7: no detailed declarative syscall descriptions in kernel \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{strace/msghdr.c}
+\scriptsize
+\begin{alltt}
+SYS\_FUNC(recvmsg) \{
+    int msg\_namelen;
+    if (entering(tcp)) \{
+        \textcolor{red}{printfd(tcp, tcp->u\_arg[0]);}
+        tprints(", ");
+        if (\textcolor{red}{fetch\_msghdr\_namelen(tcp, tcp->u\_arg[1], &msg\_namelen)}) \{
+            set\_tcb\_priv\_ulong(tcp, msg\_namelen);
+            return 0;
+        \}
+        printaddr(tcp->u\_arg[1]);
+    \} else \{
+        msg\_namelen = get\_tcb\_priv\_ulong(tcp);
+        if (syserror(tcp))
+            tprintf("{msg\_namelen=%d}", msg\_namelen);
+        else
+            \textcolor{red}{decode\_msghdr(tcp, &msg\_namelen, tcp->u\_arg[1], tcp->u\_rval);}
+    \}
+    tprints(", ");
+    \textcolor{red}{printflags(msg\_flags, tcp->u\_arg[2], "MSG\_???");}
+    return RVAL\_DECODED;
+\}
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Problem 7: no detailed declarative syscall descriptions in kernel \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{syzkaller/sys/linux/socket.txt}
+\scriptsize
+recvmsg(fd sock, msg ptr[in, \textcolor{red}{recv\_msghdr}], f flags[\textcolor{red}{recv\_flags}])
+
+\ldots
+
+\textcolor{red}{recv\_flags} = MSG\_CMSG\_CLOEXEC, MSG\_DONTWAIT, MSG\_ERRQUEUE, MSG\_OOB, MSG\_PEEK, MSG\_TRUNC, MSG\_WAITALL, MSG\_WAITFORONE
+
+\ldots
+
+\textcolor{red}{recv\_msghdr} \{
+
+\ \ \ \ msg\_name	ptr[out, sockaddr\_storage, opt]
+
+\ \ \ \ msg\_namelen	len[msg\_name, int32]
+
+\ \ \ \ msg\_iov		ptr[in, array[iovec\_out]]
+
+\ \ \ \ msg\_iovlen	len[msg\_iov, intptr]
+
+\ \ \ \ msg\_control	ptr[out, array[int8], opt]
+
+\ \ \ \ msg\_controllen	bytesize[msg\_control, intptr]
+
+\ \ \ \ msg\_flags	int32
+
+\}
+\end{block}
+
+\begin{block}{net/socket.c}
+\scriptsize
+SYSCALL\_DEFINE3(recvmsg, \textcolor{red}{int, fd}, struct user\_msghdr \_\_user *, msg, \textcolor{red}{unsigned int, flags})
+
+\{
+
+\ \ \ \ return \_\_sys\_recvmsg(fd, msg, flags, true);
+
+\}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Problem 8: strace is slow, perf can lose data \hfill [\insertframenumber/\inserttotalframenumber]}
+
+\begin{block}{ptrace API is slow}
+There are two syscall stops per syscall: \textbf{syscall-enter-stop} and \textbf{syscall-exit-stop}.
+
+There are two context switches per syscall stop: from tracee to tracer and back.
+
+strace invokes at least three syscalls per syscall stop:
+
+wait4, PTRACE\_GETREGSET, and PTRACE\_SYSCALL.
+\end{block}
+
+\begin{block}{kernel tracing can lose data}
+The data is written to a ring buffer and could be lost if the reader is not fast enough.
+\end{block}
+
+\begin{block}{Ideas}
+\begin{itemize}
+\item Add a flag to struct perf\_event\_attr that new perf events should block on overflow
+\item Implement a perf backend for strace
+\item Compile strace decoders into eBPF
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+{
+\setbeamertemplate{footline}{}
+\setbeamertemplate{logo}{}
+\begin{frame}{Questions?}
+	\begin{columns}
+		\column{7cm}
+\begin{block}{\large homepage}
+	https://strace.io
+\end{block}
+\begin{block}{\large strace.git}
+	https://github.com/strace/strace.git
+
+	https://gitlab.com/strace/strace.git
+\end{block}
+\begin{block}{\large mailing list}
+	strace-devel@lists.strace.io
+\end{block}
+\begin{block}{\large IRC channel}
+	\#strace@freenode
+\end{block}
+		\column{3cm}
+			\centerline{\includegraphics[height=7cm]{strace-straus.pdf}}
+	\end{columns}
+\end{frame}
+}
+
+\end{document}
