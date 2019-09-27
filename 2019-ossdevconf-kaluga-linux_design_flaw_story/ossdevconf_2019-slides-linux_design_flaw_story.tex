@@ -1,0 +1,543 @@
+% Copyright (C) 2012-2019 Dmitry V. Levin <ldv@altlinux.org>
+% Permission is granted to copy, distribute and/or modify this document
+% under the terms of the GNU Free Documentation License, Version 1.2
+% or any later version published by the Free Software Foundation;
+% with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+\documentclass[unicode,aspectratio=169]{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[english]{babel}
+\usepackage{alltt}
+
+\pgfdeclareimage[height=0.6cm]{basealt-corner-logo}{basealt.jpg}
+\pgfdeclareimage[height=1.2cm]{strace-corner-logo}{strace-straus.pdf}
+\pgfdeclareimage[height=1.2cm]{title-logo}{ossdevconf-logo.pdf}
+\pgfdeclareimage[height=3cm]{lineprinter}{lineprinter.png}
+\pgfdeclareimage[height=7cm]{strace-logo}{strace-straus.pdf}
+\pgfdeclareimage[height=7cm]{linux-logo}{tux-flat.png}
+
+\usetheme{Warsaw}
+\setbeamertemplate{headline}{}
+\setbeamertemplate{footline}{%
+	\pgfuseimage{basealt-corner-logo}%
+	\hfill%
+	\pgfuseimage{strace-corner-logo}%
+}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{logo}{}
+\setbeamercovered{transparent}
+
+\title{\Huge linux kernel \\ the history of a design flaw}
+\author{\Huge Dmitry~Levin}
+\date{\Large September 2019}
+\titlegraphic{\pgfuseimage{title-logo}}
+
+\begin{document}
+
+%%%%%%%
+\begin{frame}
+\titlepage
+\end{frame}
+
+%%%%%%%
+\begin{frame}{x86-64 architecture in Linux kernel \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Operating modes}
+\begin{description}
+	\item[64-bit mode]: CS register value == 0x33
+	\item[32-bit mode]: CS register value == 0x23
+\end{description}
+\end{block}
+
+\begin{block}{Several methods of system call invocation}
+\begin{description}
+	\item[int 0x80]: Legacy 32-bit
+	\item[sysenter]: Fast 32-bit
+	\item[syscall]: 64-bit
+\end{description}
+\end{block}
+
+64-bit processes can invoke both 64-bit and 32-bit system calls.
+
+\begin{block}{Linux API provides}
+\begin{itemize}
+	\item The system call number
+	\item The value of CS register
+	\item The value of RIP register
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Linux system call debuggers and tracers on x86-64 architecture \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Legacy method of obtaining system call information}
+\begin{itemize}
+	\item Fetch the system call number (PTRACE\_PEEKUSER ORIG\_RAX)
+	\item Fetch the value of CS register (PTRACE\_PEEKUSER CS)
+	\item {\bf Guess the system call bitness by the value of CS register}
+	\item Determine the system call by its number and bitness
+	\item Fetch the system call arguments accordingly
+\end{itemize}
+\end{block}
+
+\begin{block}{Traditional method of obtaining system call information}
+\begin{itemize}
+	\item Fetch the whole set of registers (PTRACE\_GETREGSET NT\_PRSTATUS), \\
+		the return value is decided by the value of CS register
+	\item {\bf Guess the system call bitness by the return value}
+	\item Determine the system call by its number and bitness
+	\item Interpret other registers as the system call arguments accordingly
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Process bitness does not match syscall bitness: problem \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Example based on Debian bug report \#459820 submitted in 2008}
+\begin{alltt}
+#include <stdio.h>
+#include <unistd.h>
+int main() \{
+    setlinebuf(stdout);
+    puts("------------");
+    \textcolor{red}{__asm__("movl $2, %eax; int $0x80");}
+    printf("[I am %d]{\textbackslash}n", getpid());
+    return 0;
+\}
+\end{alltt}
+\end{block}
+
+\begin{block}{Regular invocation: ./debbug459820}
+\begin{alltt}
+------------
+[I am 23450]
+[I am 23451]
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Process bitness does not match syscall bitness: problem \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Invocation under strace: strace -f -z ./debbug459820 > /dev/null}
+\begin{alltt}
+\ldots
+write(1, "------------{\textbackslash}n", 13)          = 13
+strace: Process 23451 attached
+\textcolor{red}{open(NULL, O_RDONLY|O_CREAT|O_TRUNC|O_DSYNC|O_DIRECT
+|O_NOATIME|O_CLOEXEC|O_PATH|O_TMPFILE|0x1000020,
+0134300) = 23451}
+[pid 23450] getpid()                    = 23450
+[pid 23451] getpid()                    = 23451
+[pid 23450] write(1, "[I am 23450]{\textbackslash}n", 13) = 13
+[pid 23451] write(1, "[I am 23451]{\textbackslash}n", 13) = 13
+[pid 23450] +++ exited with 0 +++
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Process bitness does not match syscall bitness: problem \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Alternative method of obtaining system call information}
+\begin{itemize}
+	\item Fetch the instruction pointer (PTRACE\_PEEKUSER RIP)
+	\item {\bf Fetch the instruction (PTRACE\_PEEKTEXT rip-2)
+	\item Determine the system call bitness by the opcode}
+	\item Determine the system call by its number and bitness
+	\item Fetch the system call arguments accordingly
+\end{itemize}
+\end{block}
+
+\begin{block}{Drawbacks of the alternative method}
+\begin{itemize}
+	\item Inherent race condition between the instruction executed \\ and the instruction fetched
+	\item Extra ptrace system call invocation
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Process bitness does not match syscall bitness: early approaches \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{Problem denial}
+\begin{itemize}
+	\item Pretend the problem does not exist
+	\item Argue the problem has no consequences
+	\item Claim the race is not practical
+	\item Shrug and let those who care come up with fixes
+\end{itemize}
+\end{block}
+\begin{block}{Early approaches to the problem: lively discussion in 2012}
+Indan Zupancic: Compat 32-bit syscall entry from 64-bit task!?
+\scriptsize
+\begin{itemize}
+	\item Linus Torvalds: abuse bits \#32 and \#33 of eflags
+	\item H. Peter Anvin: abuse bits [31:16] of CS
+	\item Roland McGrath: add a new regset flavour with a pseudo-register
+	\item Denys Vlasenko: extend NT\_PRSTATUS regset
+	\item Oleg Nesterov: add PTRACE\_O\_TRACESYS\_VERY\_GOOD
+	\item Pedro Alves: extend PTRACE\_GETEVENTMSG
+	\item Andrew Lutomirski (2017): PTRACE\_GET\_SYSCALL\_INFO
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Process bitness does not match syscall bitness: first patches \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{07.11.2018: First edition}
+	\begin{columns}
+		\column{3cm}
+			\centerline{\pgfuseimage{lineprinter}}
+		\column{7cm}
+			\begin{itemize}
+				\item RFC PATCH: ptrace: add PTRACE\_GET\_SYSCALL\_INFO request
+			\end{itemize}
+	\end{columns}
+\begin{alltt}
+include/linux/ptrace.h      |  8 +++++++
+include/linux/sched.h       |  1 +
+include/linux/tracehook.h   |  9 +++++---
+include/uapi/linux/ptrace.h | 23 ++++++++++++++++++++
+kernel/ptrace.c             | 53 +++++++++++++++++++++++++++++++++++++++++++++
+kernel/signal.c             |  1 +
+6 files changed, 92 insertions(+), 3 deletions(-)
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Process bitness does not match syscall bitness: first patches \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{20.11.2018 -- 21.11.2018: Second edition}
+\begin{itemize}
+	\item v2 00/15: Prepare for PTRACE\_GET\_SYSCALL\_INFO
+	\begin{itemize}
+		\tiny
+		\item Move EM\_HEXAGON to uapi/linux/elf-em.h
+		\item Move EM\_ARCOMPACT and EM\_ARCV2 to uapi/linux/elf-em.h
+		\item Move EM\_UNICORE to uapi/linux/elf-em.h
+		\item elf-em.h: add EM\_NDS32
+		\item elf-em.h: add EM\_XTENSA
+		\item m68k: define syscall\_get\_arch()
+		\item arc: define syscall\_get\_arch()
+		\item c6x: define syscall\_get\_arch()
+		\item h8300: define syscall\_get\_arch()
+		\item hexagon: define syscall\_get\_arch()
+		\item nds32: define syscall\_get\_arch()
+		\item nios2: define syscall\_get\_arch()
+		\item riscv: define syscall\_get\_arch()
+		\item unicore32: define syscall\_get\_arch()
+		\item {\bf xtensa: define syscall\_get\_arch()}
+		\item syscall\_get\_arch: add "struct task\_struct *" argument
+	\end{itemize}
+	\item RFC PATCH v2: ptrace: add PTRACE\_GET\_SYSCALL\_INFO request
+	\item v3: powerpc/ptrace: replace ptrace\_report\_syscall() with a tracehook call
+	\item {\bf x86/ptrace: Fix documentation for tracehook\_report\_syscall\_entry()}
+	\item {\bf mips: fix mips\_get\_syscall\_arg o32 check}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Process bitness does not match syscall bitness: first patches \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{25.11.2018 -- 28.11.2018: 3rd and 4th editions}
+\begin{itemize}
+	\item v3 0/3: ptrace: add PTRACE\_GET\_SYSCALL\_INFO request
+	\begin{itemize}
+		\item ptrace: pass type of a syscall-stop in ptrace\_message
+		\item ptrace: add PTRACE\_GET\_SYSCALL\_INFO request
+		\item ptrace: add PTRACE\_EVENT\_SECCOMP support to PTRACE\_GET\_SYSCALL\_INFO
+	\end{itemize}
+	\item v4 0/2: ptrace: add PTRACE\_GET\_SYSCALL\_INFO request
+	\begin{itemize}
+		\item ptrace: save the type of syscall-stop in ptrace\_message
+		\item ptrace: add PTRACE\_GET\_SYSCALL\_INFO request
+	\end{itemize}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Process bitness does not match syscall bitness: first patches \hfill [\insertframenumber/\inserttotalframenumber]}
+\scriptsize
+\begin{block}{03.12.2018 -- 10.12.2018: 5th edition}
+\begin{itemize}
+	\setlength{\itemsep}{0pt}
+	\item ia64: fix syscall\_get\_error()
+	\item microblaze: fix syscall\_set\_return\_value()
+	\item nios2: fix syscall\_get\_error()
+	\item sh: fix syscall\_set\_return\_value()
+	\item {\bf selftests: do not macro-expand failed assertion expressions}
+	\item {\bf v5: powerpc/ptrace: replace ptrace\_report\_syscall() with a tracehook call}
+	\item v5 00/25: ptrace: add PTRACE\_GET\_SYSCALL\_INFO request
+	\setlength{\itemsep}{0pt}
+	\begin{columns}
+		\column{7cm}
+			\begin{itemize}
+				\tiny
+				\setlength{\itemsep}{0pt}
+				\item alpha: define remaining syscall\_get\_* functions
+				\item Move EM\_ARCOMPACT and EM\_ARCV2 to \\ uapi/linux/elf-em.h
+				\item arc: define syscall\_get\_arch()
+				\item c6x: define syscall\_get\_arch()
+				\item elf-em.h: add EM\_CSKY
+				\item csky: define syscall\_get\_arch()
+				\item h8300: define remaining syscall\_get\_* functions
+				\item Move EM\_HEXAGON to uapi/linux/elf-em.h
+				\item hexagon: define remaining syscall\_get\_* functions
+				\item Move EM\_NDS32 to uapi/linux/elf-em.h
+				\item nds32: define syscall\_get\_arch()
+				\item nios2: define syscall\_get\_arch()
+			\end{itemize}
+		\column{7cm}
+			\begin{itemize}
+				\tiny
+				\setlength{\itemsep}{0pt}
+				\item m68k: add asm/syscall.h
+				\item mips: define syscall\_get\_error()
+				\item parisc: define syscall\_get\_error()
+				\item powerpc: define syscall\_get\_error()
+				\item riscv: define syscall\_get\_arch()
+				\item {\bf Move EM\_XTENSA to uapi/linux/elf-em.h}
+				\item xtensa: define syscall\_get\_* functions
+				\item Move EM\_UNICORE to uapi/linux/elf-em.h
+				\item unicore32: add asm/syscall.h
+				\item syscall\_get\_arch: add "struct task\_struct *" argument
+				\item ptrace: add PTRACE\_GET\_SYSCALL\_INFO request
+				\item selftests/ptrace: add a test case for \\ PTRACE\_GET\_SYSCALL\_INFO
+			\end{itemize}
+	\end{columns}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Process bitness does not match syscall bitness: first patches \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{13.12.2018: 6th edition (API finalized)}
+\begin{itemize}
+	\item v6 00/27: ptrace: add PTRACE\_GET\_SYSCALL\_INFO request
+	{\bf
+	\begin{itemize}
+		\item Move EM\_XTENSA to uapi/linux/elf-em.h
+		\item elf-em.h: add EM\_CSKY
+		\item csky: define syscall\_get\_arch()
+	\end{itemize}
+	\item powerpc/ptrace: Combine SYSCALL\_EMU \& SYSCALL\_TRACE handling
+	}
+\end{itemize}
+\end{block}
+
+\begin{block}{07.01.2019: 7th edition}
+\begin{itemize}
+	\item v7 00/22: ptrace: add PTRACE\_GET\_SYSCALL\_INFO request
+	\item Fundamentally failed to build on Alpha architecture
+	\item Changes two different subsystems: audit and ptrace
+	\item Changes too many architectures
+	\item Too big to be accepted
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Process bitness does not match syscall bitness: final patches \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{itemize}
+	\item \textcolor{red}{06.01.2019: v5.0-rc1 tagged, merge window closed}
+	\item 09.01.2019: 00/14 Prepare syscall\_get\_arch for PTRACE\_GET\_SYSCALL\_INFO
+	\begin{itemize}
+		\scriptsize
+		\item Move EM\_ARCOMPACT and EM\_ARCV2 to uapi/linux/elf-em.h
+		\item arc: define syscall\_get\_arch()
+		\item c6x: define syscall\_get\_arch()
+		\item h8300: define syscall\_get\_arch()
+		\item Move EM\_HEXAGON to uapi/linux/elf-em.h
+		\item hexagon: define syscall\_get\_arch()
+		\item m68k: define syscall\_get\_arch()
+		\item Move EM\_NDS32 to uapi/linux/elf-em.h
+		\item nds32: define syscall\_get\_arch()
+		\item nios2: define syscall\_get\_arch()
+		\item riscv: define syscall\_get\_arch()
+		\item Move EM\_UNICORE to uapi/linux/elf-em.h
+		\item unicore32: define syscall\_get\_arch()
+		\item syscall\_get\_arch: add "struct task\_struct *" argument
+	\end{itemize}
+	\item Pinging and waiting for Acked-by
+	\item \textcolor{green}{03.03.2019: v5.0 released, merge window opened}
+\end{itemize}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Process bitness does not match syscall bitness: final patches \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{itemize}
+	\item \textcolor{red}{17.03.2019: v5.1-rc1 tagged, merge window closed}
+	\item 18.03.2019: \\ v2 00/13: Prepare syscall\_get\_arch for PTRACE\_GET\_SYSCALL\_INFO
+	\begin{itemize}
+		\scriptsize
+		\item Move EM\_ARCOMPACT and EM\_ARCV2 to uapi/linux/elf-em.h
+		\item arc: define syscall\_get\_arch()
+		\item c6x: define syscall\_get\_arch()
+		\item h8300: define syscall\_get\_arch()
+		\item Move EM\_HEXAGON to uapi/linux/elf-em.h
+		\item hexagon: define syscall\_get\_arch()
+		\item m68k: define syscall\_get\_arch()
+		\item Move EM\_NDS32 to uapi/linux/elf-em.h
+		\item nds32: define syscall\_get\_arch()
+		\item nios2: define syscall\_get\_arch()
+		\item Move EM\_UNICORE to uapi/linux/elf-em.h
+		\item unicore32: define syscall\_get\_arch()
+		\item syscall\_get\_arch: add "struct task\_struct *" argument
+	\end{itemize}
+	\item 20.03.2019: Merged into audit/next
+	\item \textcolor{green}{05.05.2019: v5.1 released, merge window opened}
+	\item 08.05.2019: Merged via audit tree by commit v5.2-rc1$\sim$144
+\end{itemize}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Process bitness does not match syscall bitness: final patches \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{itemize}
+	\item \textcolor{red}{17.03.2019: v5.1-rc1 tagged, merge window closed}
+	\item 22.03.2019: v8 0/7: ptrace: add PTRACE\_GET\_SYSCALL\_INFO request
+	\begin{itemize}
+		\item nds32: fix asm/syscall.h
+		\item hexagon: define syscall\_get\_error() and syscall\_get\_return\_value()
+		\item mips: define syscall\_get\_error()
+		\item parisc: define syscall\_get\_error()
+		\item powerpc: define syscall\_get\_error()
+		\item ptrace: add PTRACE\_GET\_SYSCALL\_INFO request
+		\item selftests/ptrace: add a test case for PTRACE\_GET\_SYSCALL\_INFO
+	\end{itemize}
+	\item 08.04.2019: v9 0/7: ptrace: add PTRACE\_GET\_SYSCALL\_INFO request
+	\item 16.04.2019: v10 0/7: ptrace: add PTRACE\_GET\_SYSCALL\_INFO request
+	\item \textcolor{green}{05.05.2019: v5.1 released, merge window opened}
+	\item 10.05.2019: v11 0/7: ptrace: add PTRACE\_GET\_SYSCALL\_INFO request
+	\item \textcolor{red}{19.05.2019: v5.2-rc1 tagged, merge window closed}
+	\item 22.05.2019: Added to -mm patch queue
+	\item \textcolor{green}{07.07.2019: v5.2 released, merge window opened}
+	\item 17.07.2019: Merged via -mm patch queue, last commit is v5.3-rc1$\sim$65{\textasciicircum}2$\sim$22
+\end{itemize}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Process bitness does not match syscall bitness: result \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{PTRACE\_GET\_SYSCALL\_INFO: strace >= v4.26, linux >= v5.3-rc1}
+\begin{verbatim}
+$ git log -i -E --author=altlinux.org \
+  --grep='ptrace|syscall_a|elf-em|selftests' \
+  v4.20-rc2..v5.3-rc1
+\end{verbatim}
+\begin{itemize}
+	\item 29 commits, 47 files changed, 703 insertions, 125 deletions
+	\item 2 authors
+	\item 22 Acked-by/Reviewed-by/Signed-off-by
+	\item 07.11.2018: first RFC patch submitted
+	\item 12.11.2018: first patch committed
+	\item 13.12.2018: API finalized
+	\item 17.07.2019: last patch committed
+	\item Implements PTRACE\_GET\_SYSCALL\_INFO on those 19 architectures \\
+		that enable CONFIG\_HAVE\_ARCH\_TRACEHOOK
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Process bitness does not match syscall bitness: API \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{Extends ptrace with PTRACE\_GET\_SYSCALL\_INFO request}
+\scriptsize
+\begin{alltt}
+struct ptrace_syscall_info \{
+  __u8 op;			\hfill /* Type of system call stop */
+  __aligned_u32 \textcolor{red}{arch};	\hfill /* AUDIT_ARCH_* value; see seccomp(2) */
+  __u64 instruction_pointer;	\hfill /* CPU instruction pointer */
+  __u64 stack_pointer;		\hfill /* CPU stack pointer */
+  union \{
+    struct \{			\hfill /* op == PTRACE_SYSCALL_INFO_ENTRY */
+      __u64 nr;			\hfill /* System call number */
+      __u64 args[6];		\hfill /* System call arguments */
+    \} entry;
+    struct \{			\hfill /* op == PTRACE_SYSCALL_INFO_EXIT */
+      __s64 rval;		\hfill /* System call return value */
+      __u8 is_error;		\hfill /* System call error boolean: does rval contain an error value? */
+    \} exit;
+    struct \{			\hfill /* op == PTRACE_SYSCALL_INFO_SECCOMP */
+      __u64 nr;			\hfill /* System call number */
+      __u64 args[6];		\hfill /* System call arguments */
+      __u32 ret_data;		\hfill /* SECCOMP_RET_DATA portion of SECCOMP_RET_TRACE return value */
+    \} seccomp;
+  \};
+\};
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Process bitness does not match syscall bitness: no longer a problem \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Example based on Debian bug report \#459820 submitted in 2008}
+\begin{alltt}
+#include <stdio.h>
+#include <unistd.h>
+int main() \{
+    setlinebuf(stdout);
+    puts("------------");
+    \textcolor{red}{__asm__("movl $2, %eax; int $0x80");}
+    printf("[I am %d]{\textbackslash}n", getpid());
+    return 0;
+\}
+\end{alltt}
+\end{block}
+
+\begin{block}{Regular invocation: ./debbug459820}
+\begin{alltt}
+------------
+[I am 23450]
+[I am 23451]
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{PTRACE\_GET\_SYSCALL\_INFO: strace >= v4.26, linux >= v5.3-rc1}
+\large
+\begin{block}{Invocation under strace: strace -f -z ./debbug459820 > /dev/null}
+\begin{alltt}
+\ldots
+write(1, "------------{\textbackslash}n", 13)          = 13
+\textcolor{red}{strace: [ Process PID=23450 runs in 32 bit mode. ]}
+strace: Process 23451 attached
+fork()                                  = 23451
+\textcolor{red}{strace: [ Process PID=23450 runs in 64 bit mode. ]}
+[pid 23450] getpid()                    = 23450
+\textcolor{red}{strace: [ Process PID=23451 runs in 64 bit mode. ]}
+[pid 23451] getpid()                    = 23451
+[pid 23450] write(1, "[I am 23450]{\textbackslash}n", 13) = 13
+[pid 23451] write(1, "[I am 23451]{\textbackslash}n", 13) = 13
+[pid 23450] +++ exited with 0 +++
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+{
+\setbeamertemplate{footline}{}
+\begin{frame}{Questions?}
+	\begin{columns}
+		\column{4cm}
+			\centerline{\pgfuseimage{linux-logo}}
+		\column{3cm}
+		\column{3cm}
+			\centerline{\pgfuseimage{strace-logo}}
+	\end{columns}
+\end{frame}
+}
+
+\end{document}
