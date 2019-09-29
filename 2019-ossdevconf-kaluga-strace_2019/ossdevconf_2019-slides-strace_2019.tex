@@ -1,0 +1,393 @@
+% Copyright (C) 2012-2019 Dmitry V. Levin <ldv@altlinux.org>
+% Permission is granted to copy, distribute and/or modify this document
+% under the terms of the GNU Free Documentation License, Version 1.2
+% or any later version published by the Free Software Foundation;
+% with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+\documentclass[unicode,aspectratio=169]{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[english]{babel}
+\usepackage{alltt}
+
+\pgfdeclareimage[height=0.6cm]{basealt-corner-logo}{basealt.jpg}
+\pgfdeclareimage[height=1.2cm]{strace-corner-logo}{strace-straus.pdf}
+\pgfdeclareimage[height=1.2cm]{title-logo}{ossdevconf-logo.pdf}
+\pgfdeclareimage[height=7cm]{strace-logo}{strace-straus.pdf}
+
+\usetheme{Warsaw}
+\setbeamertemplate{headline}{}
+\setbeamertemplate{footline}{%
+	\pgfuseimage{basealt-corner-logo}%
+	\hfill%
+	\pgfuseimage{strace-corner-logo}%
+}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{logo}{}
+\setbeamercovered{transparent}
+
+\title{\Huge strace 2019}
+\author{\Huge Dmitry~Levin}
+\date{\Large September 2019}
+\titlegraphic{\pgfuseimage{title-logo}}
+
+\begin{document}
+
+%%%%%%%
+\begin{frame}
+\titlepage
+\end{frame}
+
+%%%%%%
+\begin{frame}{strace 2019 \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{v4.20 \ldots v5.3}
+\begin{itemize}
+\item seccomp-assisted system call filtering: \textbf{--seccomp-bpf} option
+\item system call return status filtering: \textbf{-e status}=\textit{set}, \textbf{-z}, \textbf{-Z} options
+\item PTRACE\_GET\_SYSCALL\_INFO API support
+\item support of new system calls (32)
+\item elaborate syscall parsers
+\item long options
+\item copyleft license
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{seccomp-assisted system call filtering: \textbf{--seccomp-bpf} \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Introduced in v5.3 (September 2019)}
+\begin{itemize}
+\item Automatically generates and attaches a BPF program to filter system calls
+\item Makes execution of untraced system calls two orders of magnitude faster
+\end{itemize}
+\end{block}
+
+\begin{block}{tests/filter\_seccomp-perf.c}
+\scriptsize
+\begin{alltt}
+static volatile sig_atomic_t stop;
+static void handler(int signo) \{
+    stop = true;
+\}
+int main(void) \{
+    signal(SIGALRM, handler);
+    alarm(1);
+    unsigned int i;
+    for (i = 0; !stop; i++)
+        chdir(".");
+    printf("%d{\textbackslash}n", i);
+    return 0;
+\}
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{seccomp-assisted system call filtering: \textbf{--seccomp-bpf} \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{time ./filter\_seccomp-perf}
+\begin{alltt}
+3480990
+0.05user 0.94system 0:01.00elapsed 100%CPU (0avgtext+0avgdata 1324maxresident)k
+0inputs+0outputs (0major+66minor)pagefaults 0swaps
+\end{alltt}
+\end{block}
+
+\begin{block}{time strace \textbf{--seccomp-bpf} -f -qq -e signal=none -e trace=fchdir ./filter\_seccomp-perf}
+\begin{alltt}
+2962562
+0.05user 0.94system 0:01.00elapsed 100%CPU (0avgtext+0avgdata 3280maxresident)k
+0inputs+0outputs (0major+321minor)pagefaults 0swaps
+\end{alltt}
+\end{block}
+
+\begin{block}{time strace -f -qq -e signal=none -e trace=fchdir ./filter\_seccomp-perf}
+\begin{alltt}
+81429
+0.53user 0.73system 0:01.00elapsed 127%CPU (0avgtext+0avgdata 3156maxresident)k
+0inputs+0outputs (0major+284minor)pagefaults 0swaps
+\end{alltt}
+\end{block}
+
+$2962562 / 3480990 \approx 85.1\%$, $81429 / 3480990 \approx 2.3\%$, $81429 / 2962562 \approx 2.7\%$
+\end{frame}
+
+%%%%%%%
+\begin{frame}{system call return status filtering: \textbf{-e status}=\textit{set} \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Introduced in v5.2 (July 2019)}
+Print only system calls with the specified return status. \\
+\textit{set} can include the following elements:
+\begin{description}
+	\item[successful]: returned without an error code, alias to \textbf{-z}
+	\item[failed]: returned with an error code, alias to \textbf{-Z}
+	\item[unfinished]: did not return
+	\item[detached]: detached before return
+	\item[unavailable]: returned but failed to fetch the error status
+\end{description}
+\end{block}
+The  default is \textbf{-e status}=\textbf{all}.
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{system call return status filtering: \textbf{-z} \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+Trace only those system calls that returned without an error code: \\
+\textbf{-z}, \textbf{-e status}=\textbf{successful}
+\begin{block}{buildreq: rpm-utils commit 0.10.3-alt1$\sim$2}
+\large
+\begin{alltt}
+--- a/rpm-utils/strace_files
++++ b/rpm-utils/strace_files
+@@ -94,3 +94,3 @@ spp_output="$workdir"/spp_output
+ rc=0
+-strace -qq -f -e signal=none -e trace="$\{trace:-file\}" {\textbackslash}
++strace -qq -f -z -e signal=none -e trace="$\{trace:-file\}" {\textbackslash}
+        -o "|/usr/share/buildreqs/spp >$spp_output" -- "$@"
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{system call return status filtering: \textbf{-z} aggregation \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{strace -o log -f -e signal=none -e trace=execve,nanosleep {\textbackslash} \\
+	sh -c 'sleep 0.1 \& sleep 0.2 \& sleep 0.3' \&\& cat log}
+\scriptsize
+\begin{alltt}
+13475 execve("/bin/sh", ["sh", "-c", "sleep 0.1 & sleep 0.2 & sleep 0."...],
+      0x5631be4f87a8 /* 42 vars */) = 0
+13476 execve("/bin/sleep", ["sleep", "0.1"], 0xe4c4f0 /* 33 vars */ <unfinished ...>
+13477 execve("/bin/sleep", ["sleep", "0.2"], 0xe4c4f0 /* 33 vars */ <unfinished ...>
+13478 execve("/bin/sleep", ["sleep", "0.3"], 0xe4c4f0 /* 33 vars */ <unfinished ...>
+13476 <... execve resumed>)             = 0
+13477 <... execve resumed>)             = 0
+13478 <... execve resumed>)             = 0
+13476 nanosleep({tv_sec=0, tv_nsec=100000000},  <unfinished ...>
+13477 nanosleep({tv_sec=0, tv_nsec=200000000},  <unfinished ...>
+13478 nanosleep({tv_sec=0, tv_nsec=300000000},  <unfinished ...>
+13476 <... nanosleep resumed>NULL)      = 0
+13476 +++ exited with 0 +++
+13477 <... nanosleep resumed>NULL)      = 0
+13477 +++ exited with 0 +++
+13478 <... nanosleep resumed>NULL)      = 0
+13478 +++ exited with 0 +++
+13475 +++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{system call return status filtering: \textbf{-z} aggregation \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{strace -o log \textbf{-z} -f -e signal=none -e trace=execve,nanosleep {\textbackslash} \\
+	sh -c 'sleep 0.1 \& sleep 0.2 \& sleep 0.3' \&\& cat log}
+\small
+\begin{alltt}
+13475 execve("/bin/sh", ["sh", "-c", "sleep 0.1 & sleep 0.2 & sleep 0."...],
+      0x5631be4f87a8 /* 42 vars */) = 0
+13476 execve("/bin/sleep", ["sleep", "0.1"], 0xe4c4f0 /* 33 vars */) = 0
+13477 execve("/bin/sleep", ["sleep", "0.2"], 0xe4c4f0 /* 33 vars */) = 0
+13478 execve("/bin/sleep", ["sleep", "0.3"], 0xe4c4f0 /* 33 vars */) = 0
+13476 nanosleep({tv_sec=0, tv_nsec=100000000}, NULL) = 0
+13476 +++ exited with 0 +++
+13477 nanosleep({tv_sec=0, tv_nsec=200000000}, NULL) = 0
+13477 +++ exited with 0 +++
+13478 nanosleep({tv_sec=0, tv_nsec=300000000}, NULL) = 0
+13478 +++ exited with 0 +++
+13475 +++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{system call return status filtering: \textbf{-Z} \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+Trace only those system calls that returned with an error code: \\
+\textbf{-Z}, \textbf{-e status}=\textbf{failed}
+
+\begin{block}{eu-elflint no-such-file1 no-such-file2}
+\small
+\begin{alltt}
+eu-elflint: cannot open input file: No such file or directory
+eu-elflint: cannot open input file: No such file or directory
+\end{alltt}
+\end{block}
+
+\begin{block}{strace -qq -Z -efile eu-elflint no-such-file1 no-such-file2}
+\small
+\begin{alltt}
+access("/etc/ld.so.preload", R_OK) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "no-such-file1", O_RDONLY) = -1 ENOENT (No such file or directory)
+eu-elflint: cannot open input file: No such file or directory
+openat(AT_FDCWD, "no-such-file2", O_RDONLY) = -1 ENOENT (No such file or directory)
+eu-elflint: cannot open input file: No such file or directory
+\end{alltt}
+\end{block}
+
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{PTRACE\_GET\_SYSCALL\_INFO API support \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Example based on Debian bug report \#459820 submitted in 2008}
+\begin{alltt}
+#include <stdio.h>
+#include <unistd.h>
+int main() \{
+    setlinebuf(stdout);
+    puts("------------");
+    \textcolor{red}{__asm__("movl $2, %eax; int $0x80");}
+    printf("[I am %d]{\textbackslash}n", getpid());
+    return 0;
+\}
+\end{alltt}
+\end{block}
+
+\begin{block}{Regular invocation: ./debbug459820}
+\begin{alltt}
+------------
+[I am 23450]
+[I am 23451]
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{PTRACE\_GET\_SYSCALL\_INFO API support \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{strace -f -z ./debbug459820 > /dev/null}
+\begin{alltt}
+\ldots
+write(1, "------------{\textbackslash}n", 13)          = 13
+strace: Process 23451 attached
+\textcolor{red}{open(NULL, O_RDONLY|O_CREAT|O_TRUNC|O_DSYNC|O_DIRECT
+|O_NOATIME|O_CLOEXEC|O_PATH|O_TMPFILE|0x1000020,
+0134300) = 23451}
+[pid 23450] getpid()                    = 23450
+[pid 23451] getpid()                    = 23451
+[pid 23450] write(1, "[I am 23450]{\textbackslash}n", 13) = 13
+[pid 23451] write(1, "[I am 23451]{\textbackslash}n", 13) = 13
+[pid 23450] +++ exited with 0 +++
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{PTRACE\_GET\_SYSCALL\_INFO API support \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{PTRACE\_GET\_SYSCALL\_INFO: strace >= v4.26, linux >= v5.3-rc1}
+\begin{alltt}
+\ldots
+write(1, "------------{\textbackslash}n", 13)          = 13
+\textcolor{red}{strace: [ Process PID=23450 runs in 32 bit mode. ]}
+strace: Process 23451 attached
+fork()                                  = 23451
+\textcolor{red}{strace: [ Process PID=23450 runs in 64 bit mode. ]}
+[pid 23450] getpid()                    = 23450
+\textcolor{red}{strace: [ Process PID=23451 runs in 64 bit mode. ]}
+[pid 23451] getpid()                    = 23451
+[pid 23450] write(1, "[I am 23450]{\textbackslash}n", 13) = 13
+[pid 23451] write(1, "[I am 23451]{\textbackslash}n", 13) = 13
+[pid 23450] +++ exited with 0 +++
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{New system calls \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\Large Introduced in v5.3 (September 2019)}
+pidfd\_open, clone3
+\end{block}
+
+\begin{block}{\Large Introduced in v5.2 (July 2019)}
+open\_tree, move\_mount, fsopen, fsconfig, fsmount, fspick
+\end{block}
+
+\begin{block}{\Large Introduced in v5.1 (May 2019)}
+clock\_gettime64,
+clock\_settime64,
+clock\_adjtime64,
+clock\_getres\_time64,
+clock\_nanosleep\_time64,
+timer\_gettime64,
+timer\_settime64,
+timerfd\_gettime64,
+timerfd\_settime64,
+utimensat\_time64,
+pselect6\_time64,
+ppoll\_time64,
+io\_pgetevents\_time64,
+recvmmsg\_time64,
+mq\_timedsend\_time64,
+mq\_timedreceive\_time64,
+semtimedop\_time64,
+rt\_sigtimedwait\_time64,
+futex\_time64,
+sched\_rr\_get\_interval\_time64,
+pidfd\_send\_signal,
+io\_uring\_setup,
+io\_uring\_enter,
+io\_uring\_register
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Long options \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{1991 \ldots 2019: short options only}
+	a:Ab:cCdDe:E:fFhiI:ko:O:p:P:qrs:S:tTu:vVwxX:yzZ
+\end{block}
+\begin{block}{Introduced in v5.3 (September 2019)}
+\begin{description}
+	\item[--help]: alias to \textbf{-h}
+	\item[--version]: alias to \textbf{-V}
+	\item[--seccomp-bpf]: seccomp-assisted system call filtering
+\end{description}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Copyleft license \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{\Large 1991 \ldots 2018: permissive license}
+strace was released under a Berkeley-style license \\ at the request of Paul Kranenburg.
+\end{block}
+\begin{block}{\Large Since v4.26$\sim$52 (December 2018): copyleft license}
+\begin{itemize}
+	\item test suite: GNU General Public License v2+
+	\item the rest of strace: GNU Lesser General Public License v2.1+
+\end{itemize}
+\end{block}
+The first major strace feature implemented after this change is PTRACE\_GET\_SYSCALL\_INFO API support.
+\end{frame}
+
+%%%%%%%
+{
+\setbeamertemplate{footline}{}
+\begin{frame}{Questions?}
+	\begin{columns}
+		\column{7cm}
+\begin{block}{\large homepage}
+	https://strace.io
+\end{block}
+\begin{block}{\large strace.git}
+	https://github.com/strace/strace.git
+
+	https://gitlab.com/strace/strace.git
+\end{block}
+\begin{block}{\large mailing list}
+	strace-devel@lists.strace.io
+\end{block}
+\begin{block}{\large IRC channel}
+	\#strace@freenode
+\end{block}
+		\column{3cm}
+			\centerline{\includegraphics[height=7cm]{strace-straus.pdf}}
+	\end{columns}
+\end{frame}
+}
+
+\end{document}
