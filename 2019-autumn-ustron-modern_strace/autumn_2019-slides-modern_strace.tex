@@ -1,0 +1,849 @@
+% Copyright (C) 2012-2019 Dmitry V. Levin <ldv@altlinux.org>
+% Permission is granted to copy, distribute and/or modify this document
+% under the terms of the GNU Free Documentation License, Version 1.2
+% or any later version published by the Free Software Foundation;
+% with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+\documentclass[unicode,aspectratio=169]{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[english]{babel}
+\usepackage{alltt}
+
+\pgfdeclareimage[height=0.6cm]{basealt-corner-logo}{basealt.jpg}
+\pgfdeclareimage[height=1.2cm]{strace-corner-logo}{strace-straus.pdf}
+\pgfdeclareimage[height=1.2cm]{basealt2-corner-logo}{basealt.jpg}
+\pgfdeclareimage[height=3cm]{title-logo}{jesien.png}
+
+\usetheme{Warsaw}
+\setbeamertemplate{headline}{}
+\setbeamertemplate{footline}{%
+	\pgfuseimage{basealt-corner-logo}%
+	\hfill%
+	\pgfuseimage{strace-corner-logo}%
+	\smallskip%
+}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{logo}{}
+\setbeamercovered{transparent}
+
+\title{\Huge Modern strace}
+\author{\Huge Dmitry~Levin}
+%\date{\Large November~2019}
+\date{\Large Jesień Linuksowa \\ Ustroń, 2019}
+\titlegraphic{\pgfuseimage{title-logo}}
+
+\begin{document}
+
+%%%%%%%
+\begin{frame}
+\titlepage
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Traditional strace \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Printing instruction pointer and timestamps}
+\begin{itemize}
+\item print instruction pointer: \textbf{-i} option
+\item print timestamps: \textbf{-r}, \textbf{-t}, \textbf{-tt}, \textbf{-ttt}, and \textbf{-T} options
+\end{itemize}
+\end{block}
+
+\begin{block}{Size and format of strings}
+\begin{itemize}
+\item string size: \textbf{-s} option
+\item string format: \textbf{-x} and \textbf{-xx} options
+\end{itemize}
+\end{block}
+
+\begin{block}{Verbosity of syscall decoding}
+\begin{itemize}
+\item abbreviate output: \textbf{-e abbrev=\textit{set}}, \textbf{-v} option
+\item dereference structures: \textbf{-e verbose=\textit{set}}
+\item print raw undecoded syscalls: \textbf{-e raw=\textit{set}}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Traditional strace \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Printing signals}
+\begin{itemize}
+\item print signals: \textbf{-e signal=\textit{set}}
+\end{itemize}
+\end{block}
+
+\begin{block}{Dumping}
+\begin{itemize}
+\item dump the data read from the specified descriptors: \textbf{-e read=\textit{set}}
+\item dump the data written to the specified descriptors: \textbf{-e write=\textit{set}}
+\end{itemize}
+\end{block}
+
+\begin{block}{Redirecting output to files or pipelines}
+\begin{itemize}
+\item write the trace to a file or pipeline: \textbf{-o \textit{filename}} option
+\item write traces of processes to separate files: \textbf{-ff -o \textit{filename}}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Traditional strace \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{System call filtering}
+\begin{itemize}
+\item trace only the specified set of system calls: \textbf{-e trace=\textit{set}}
+\end{itemize}
+\end{block}
+
+\begin{block}{System call statistics}
+\begin{itemize}
+\item count time, calls, and errors for each system call: \textbf{-c} option
+\item sort the histogram printed by the \textbf{-c} option: \textbf{-S \textit{sortby}} option
+\end{itemize}
+\end{block}
+
+\begin{block}{Tracing control}
+\begin{itemize}
+\item attach to existing processes: \textbf{-p \textit{pid}} option
+\item trace child processes: \textbf{-f} option
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%
+\begin{frame}{Modern strace \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Tracing output format}
+\begin{itemize}
+\item pathnames accessed by name or descriptor: \textbf{-y} option
+\item network protocol associated with descriptors: \textbf{-yy} option
+\item stack of function calls: \textbf{-k} option
+\item open \textbf{-o} in append mode: \textbf{-A} option
+\item format of named constants and flags: \textbf{-X} option
+\item elaborate syscall parsers
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+
+\begin{frame}{Modern strace \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{System call filtering}
+\begin{itemize}
+\item pathnames accessed by name or descriptor: \textbf{-P} option
+\item regular expressions: -e \textbf{trace}=/\textit{regexp}
+\item optional specifications: -e \textbf{trace}=?\textit{spec}
+\item new syscall classes: \%stat, \%lstat, \%fstat, \%statfs, \%fstatfs, \%\%stat, \%\%statfs
+\item return status filtering: \textbf{-e status}=\textit{set}, \textbf{-z}, \textbf{-Z} options
+\item seccomp-assisted filtering: \textbf{--seccomp-bpf} option
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Modern strace \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{System call statistics}
+\begin{itemize}
+\item wall clock time spent in syscalls: \textbf{-w} option
+\item combine statistics with regular output: \textbf{-C} option
+\end{itemize}
+\end{block}
+
+\begin{block}{Tracing control}
+\begin{itemize}
+\item attach to multiple processes: \textbf{-p \textit{pid\_set}} option
+\item detach on execve: \textbf{-b execve} option
+\item run as a detached grandchild: \textbf{-D} option
+\item interruptibility: \textbf{-I} option
+\item postprocessing: \textbf{strace-log-merge}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Modern strace \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{System call tampering}
+\begin{itemize}
+\item fault injection: \\
+-e \textbf{inject}=\textit{set}:\textbf{error}=\textit{errno}[:\textbf{when}=\textit{expr}][:\textbf{syscall}=\textit{syscall}]
+\item return value injection: \\
+-e \textbf{inject}=\textit{set}:\textbf{retval}=\textit{value}[:\textbf{when}=\textit{expr}][:\textbf{syscall}=\textit{syscall}]
+\item signal injection: \\
+-e \textbf{inject}=\textit{set}:\textbf{signal}=\textit{set}
+\item delay injection: \\
+-e \textbf{inject}=\textit{set}:\textbf{delay\_enter}=\textit{usecs} \\
+-e \textbf{inject}=\textit{set}:\textbf{delay\_exit}=\textit{usecs}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call filtering issues \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large glibc: open or openat?}
+\begin{alltt}
+glibc-2.25$ strace -qq \textcolor{red}{-e open} cat /dev/null
+open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+open("/dev/null", O_RDONLY)             = 3
+glibc-2.26$ strace -qq \textcolor{red}{-e open} cat /dev/null
+glibc-2.26$ strace -qq \textcolor{red}{-e openat} cat /dev/null
+openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/dev/null", O_RDONLY) = 3
+glibc-2.25$ strace -qq \textcolor{red}{-e openat} cat /dev/null
+\end{alltt}
+\end{block}
+
+\begin{block}{\large traditional approach is not portable}
+\begin{alltt}
+riscv$ strace \textcolor{red}{-e open,openat}
+strace: invalid system call 'open'
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Regular expressions: -e trace=/\textit{regexp} \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large naive approach is inexact}
+\large
+\begin{alltt}
+$ asinfo --set-arch x86_64,riscv --list-abi \textbackslash
+  --nargs --get-sname \textcolor{red}{/open}
+|   |                   | x86_64 | x86_64 | riscv | riscv |
+| N |      Syscall name |  64bit |  32bit | 64bit | 32bit |
+| 1 |           mq_open |      4 |      4 |     4 |     4 |
+\textcolor{red}{| 2 |              open |      3 |      3 |     - |     - |}
+| 3 | open_by_handle_at |      3 |      3 |     3 |     3 |
+\textcolor{red}{| 4 |            openat |      4 |      4 |     4 |     4 |}
+| 5 |   perf_event_open |      5 |      5 |     5 |     5 |
+\end{alltt}
+\textbf{asinfo} stands for \textbf{A}dvanced \textbf{S}yscall \textbf{INFO}rmation tool
+\end{block}
+
+\begin{block}{\large accurate and portable approach}
+\texttt{\$ strace -e '/{\textasciicircum}open(at)?\$'}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{New system call classes \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large traditional syscall classes}
+\begin{itemize}
+\item \textbf{desc}: take or return a descriptor
+\item \textbf{file}: take a file name
+\item \textbf{memory}: memory mapping, memory policy
+\item \textbf{process}: process management
+\item \textbf{signal}: signal related
+\item \textbf{ipc}: SysV IPC related
+\item \textbf{network}: network related
+\end{itemize}
+\vspace{-2\topsep}
+\begin{alltt}
+$ strace -e trace=\textit{class}
+$ strace -e \textit{class}
+\end{alltt}
+\end{block}
+
+\begin{block}{\large all syscall classes now have \% prefix}
+\begin{alltt}
+$ strace -e trace=%\textit{class}
+$ strace -e %\textit{class}
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{New system call classes \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large new syscall classes}
+\begin{itemize}
+	\item \%stat, \%lstat, \%fstat
+	\item \%statfs, \%fstatfs
+	\item \%\%stat = \%stat + \%lstat + \%fstat + statx
+	\item \%\%statfs = \%statfs + \%fstatfs + ustat
+\end{itemize}
+\end{block}
+
+\begin{block}{\large strace \textbf{-y} -e \textbf{\%\%stat} ls /var/empty}
+\begin{alltt}
+\textcolor{red}{fstat}(3</etc/ld.so.cache>, {st_mode=S_IFREG|0644, st_size=30341, ...}) = 0
+...
+\textcolor{red}{fstat}(3</proc/filesystems>, {st_mode=S_IFREG|0444, st_size=0, ...}) = 0
+\textcolor{red}{stat}("/var/empty", {st_mode=S_IFDIR|0555, st_size=40, ...}) = 0
+\textcolor{red}{fstat}(3</var/empty>, {st_mode=S_IFDIR|0555, st_size=40, ...}) = 0
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{New system call classes \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large \%stat + \%lstat + \%fstat + statx = \%\%stat}
+\begin{alltt}
+$ asinfo --set-arch x86_64,riscv --list-abi --nargs --get-sname \%\%stat
+|    |              | x86_64 | x86_64 | riscv | riscv |
+|  N | Syscall name |  64bit |  32bit | 64bit | 32bit |
+\textcolor{blue}{|  1 |        fstat |      2 |      2 |     2 |     - |}
+\textcolor{blue}{|  2 |      fstat64 |      - |      2 |     - |     2 |}
+\textcolor{blue}{|  3 |    fstatat64 |      - |      4 |     - |     4 |}
+\textcolor{green}{|  4 |        lstat |      2 |      2 |     - |     - |}
+\textcolor{green}{|  5 |      lstat64 |      - |      2 |     - |     - |}
+\textcolor{blue}{|  6 |   newfstatat |      4 |      - |     4 |     - |}
+\textcolor{blue}{|  7 |     oldfstat |      - |      2 |     - |     - |}
+\textcolor{green}{|  8 |     oldlstat |      - |      2 |     - |     - |}
+\textcolor{red}{|  9 |      oldstat |      - |      2 |     - |     - |}
+\textcolor{red}{| 10 |         stat |      2 |      2 |     - |     - |}
+\textcolor{red}{| 11 |       stat64 |      - |      2 |     - |     - |}
+| 12 |        statx |      5 |      5 |     5 |     5 |
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call return status filtering: \textbf{-z} \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Introduced in v5.2 (July 2019)}
+Trace only those system calls that returned without an error code: \\
+\textbf{-z}, \textbf{-e status}=\textbf{successful}
+\end{block}
+
+\begin{block}{buildreq: rpm-utils commit 0.10.3-alt1$\sim$2}
+\small
+\begin{alltt}
+--- a/rpm-utils/strace_files
++++ b/rpm-utils/strace_files
+@@ -94,3 +94,3 @@ spp_output="$workdir"/spp_output
+ rc=0
+-strace -qq -f -e signal=none -e trace="$\{trace:-file\}" {\textbackslash}
++strace -qq -f -z -e signal=none -e trace="$\{trace:-file\}" {\textbackslash}
+        -o "|/usr/share/buildreqs/spp >$spp_output" -- "$@"
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call return status filtering: \textbf{-z} aggregation \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{strace -o log -f -e signal=none -e trace=execve,nanosleep {\textbackslash} \\
+	sh -c 'sleep 0.1 \& sleep 0.2 \& sleep 0.3' \&\& cat log}
+\scriptsize
+\begin{alltt}
+13475 execve("/bin/sh", ["sh", "-c", "sleep 0.1 & sleep 0.2 & sleep 0."...],
+      0x5631be4f87a8 /* 42 vars */) = 0
+13476 execve("/bin/sleep", ["sleep", "0.1"], 0xe4c4f0 /* 33 vars */ <unfinished ...>
+13477 execve("/bin/sleep", ["sleep", "0.2"], 0xe4c4f0 /* 33 vars */ <unfinished ...>
+13478 execve("/bin/sleep", ["sleep", "0.3"], 0xe4c4f0 /* 33 vars */ <unfinished ...>
+13476 <... execve resumed>)             = 0
+13477 <... execve resumed>)             = 0
+13478 <... execve resumed>)             = 0
+13476 nanosleep({tv_sec=0, tv_nsec=100000000},  <unfinished ...>
+13477 nanosleep({tv_sec=0, tv_nsec=200000000},  <unfinished ...>
+13478 nanosleep({tv_sec=0, tv_nsec=300000000},  <unfinished ...>
+13476 <... nanosleep resumed>NULL)      = 0
+13476 +++ exited with 0 +++
+13477 <... nanosleep resumed>NULL)      = 0
+13477 +++ exited with 0 +++
+13478 <... nanosleep resumed>NULL)      = 0
+13478 +++ exited with 0 +++
+13475 +++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call return status filtering: \textbf{-z} aggregation \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{strace -o log \textbf{-z} -f -e signal=none -e trace=execve,nanosleep {\textbackslash} \\
+	sh -c 'sleep 0.1 \& sleep 0.2 \& sleep 0.3' \&\& cat log}
+\small
+\begin{alltt}
+13475 execve("/bin/sh", ["sh", "-c", "sleep 0.1 & sleep 0.2 & sleep 0."...],
+      0x5631be4f87a8 /* 42 vars */) = 0
+13476 execve("/bin/sleep", ["sleep", "0.1"], 0xe4c4f0 /* 33 vars */) = 0
+13477 execve("/bin/sleep", ["sleep", "0.2"], 0xe4c4f0 /* 33 vars */) = 0
+13478 execve("/bin/sleep", ["sleep", "0.3"], 0xe4c4f0 /* 33 vars */) = 0
+13476 nanosleep({tv_sec=0, tv_nsec=100000000}, NULL) = 0
+13476 +++ exited with 0 +++
+13477 nanosleep({tv_sec=0, tv_nsec=200000000}, NULL) = 0
+13477 +++ exited with 0 +++
+13478 nanosleep({tv_sec=0, tv_nsec=300000000}, NULL) = 0
+13478 +++ exited with 0 +++
+13475 +++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call return status filtering: \textbf{-Z} \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Introduced in v5.2 (July 2019)}
+Trace only those system calls that returned with an error code: \\
+\textbf{-Z}, \textbf{-e status}=\textbf{failed}
+\end{block}
+
+\begin{block}{eu-elflint no-such-file1 no-such-file2}
+\small
+\begin{alltt}
+eu-elflint: cannot open input file: No such file or directory
+eu-elflint: cannot open input file: No such file or directory
+\end{alltt}
+\end{block}
+
+\begin{block}{strace -qq -Z -efile eu-elflint no-such-file1 no-such-file2}
+\small
+\begin{alltt}
+access("/etc/ld.so.preload", R_OK) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "no-such-file1", O_RDONLY) = -1 ENOENT (No such file or directory)
+eu-elflint: cannot open input file: No such file or directory
+openat(AT_FDCWD, "no-such-file2", O_RDONLY) = -1 ENOENT (No such file or directory)
+eu-elflint: cannot open input file: No such file or directory
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Seccomp-assisted system call filtering: \textbf{--seccomp-bpf} \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{Introduced in v5.3 (September 2019)}
+\begin{itemize}
+\item Automatically generates and attaches a BPF program to filter system calls
+\item Makes execution of untraced system calls two orders of magnitude faster
+\end{itemize}
+\end{block}
+
+\begin{alltt}
+\$ dd if=/dev/zero of=/dev/null bs=1 count=1M 2>\&1 | grep -v records
+1048576 bytes (1.0 MB, 1.0 MiB) copied, \textcolor{red}{0.668768} s, 1.6 MB/s
+
+\$ strace \textbf{--seccomp-bpf} -f -qq -e signal=none -e trace=fchdir {\textbackslash}
+  dd if=/dev/zero of=/dev/null bs=1 count=1M 2>\&1 | grep -v records
+1048576 bytes (1.0 MB, 1.0 MiB) copied, \textcolor{red}{0.736511} s, 1.4 MB/s
+
+\$ strace -f -qq -e signal=none -e trace=fchdir {\textbackslash}
+  dd if=/dev/zero of=/dev/null bs=1 count=1M 2>\&1 | grep -v records
+1048576 bytes (1.0 MB, 1.0 MiB) copied, \textcolor{red}{28.0445} s, 37.4 kB/s
+\end{alltt}
+
+$0.736511 / 0.668768 \approx \textcolor{red}{1.10}$, $28.0445 / 0.736511 \approx \textcolor{red}{38}$, $28.0445 / 0.668768 \approx \textcolor{red}{42}$
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Network protocol associated with descriptors: \textbf{-yy} option \hfill [\insertframenumber/\inserttotalframenumber]}
+\scriptsize
+\begin{alltt}
+$ strace \textcolor{red}{-yy} -e %desc,%network netcat 127.0.0.1 22 </dev/null
+\ldots
+socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) = 3\textcolor{red}{<TCP:[518663]>}
+connect(3\textcolor{red}{<TCP:[518663]>}, {sa_family=AF_INET, sin_port=htons(22),
+        sin_addr=inet_addr("127.0.0.1")}, 16) = 0
+poll([{fd=3\textcolor{red}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}, events=POLLIN},
+     {fd=0\textcolor{red}{</dev/null<char 1:3>>}, events=POLLIN}], 2, -1) = 1 ([{fd=0, revents=POLLIN}])
+read(0\textcolor{red}{</dev/null<char 1:3>>}, "", 2048)  = 0
+shutdown(3\textcolor{red}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}, SHUT_WR) = 0
+poll([{fd=3\textcolor{red}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}, events=POLLIN}, {fd=-1}], 2, -1)
+     = 1 ([{fd=3, revents=POLLIN}])
+read(3\textcolor{red}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}, "SSH-2.0-OpenSSH_7.9{\textbackslash}r{\textbackslash}n", 2048) = 21
+write(1\textcolor{red}{</dev/pts/9<char 136:9>>}, "SSH-2.0-OpenSSH_7.9{\textbackslash}r{\textbackslash}n", 21) = 21
+poll([{fd=3\textcolor{red}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}, events=POLLIN}, {fd=-1}], 2, -1)
+     = 1 ([{fd=3, revents=POLLIN|POLLHUP}])
+read(3\textcolor{red}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}, "", 2048) = 0
+shutdown(3\textcolor{red}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}, SHUT_RD)
+         = -1 ENOTCONN (Transport endpoint is not connected)
+close(3\textcolor{red}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}) = 0
++++ exited with 0 +++
+\end{alltt}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Stack of function calls: \textbf{-k} option \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large strace -qq -P /dev/full cat /dev/null > /dev/full}
+\scriptsize
+\begin{alltt}
+fstat(1, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 7), ...}) = 0
+close(1)                                = 0
+\end{alltt}
+\end{block}
+
+\begin{block}{\large strace \textbf{-k} -qq -P /dev/full cat /dev/null > /dev/full}
+\scriptsize
+\begin{alltt}
+fstat(1, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 7), ...}) = 0
+ > /lib64/libc-2.27.so(__fxstat64+0x13) [0xe79c3]
+ > /bin/cat(main+0x1b3) [0x4017e3]
+ > /lib64/libc-2.27.so(__libc_start_main+0xe6) [0x21bd6]
+ > /bin/cat(_start+0x29) [0x402179]
+close(1)                                = 0
+ > /lib64/libc-2.27.so(__close_nocancel+0x7) [0xe8b47]
+ > /lib64/libc-2.27.so(_IO_file_close_it@@GLIBC_2.2.5+0x67) [0x79fd7]
+ > /lib64/libc-2.27.so(fclose@@GLIBC_2.2.5+0x136) [0x6d376]
+ > /bin/cat(close_stream+0x19) [0x404ce9]
+ > /bin/cat(close_stdout+0x11) [0x402691]
+ > /lib64/libc-2.27.so(__run_exit_handlers+0x170) [0x379c0]
+ > /lib64/libc-2.27.so(exit+0x19) [0x37ab9]
+ > /lib64/libc-2.27.so(__libc_start_main+0xed) [0x21bdd]
+ > /bin/cat(_start+0x29) [0x402179]
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Format of named constants and flags: \textbf{-X} option \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large strace -e /open cat /dev/null}
+\scriptsize
+\begin{alltt}
+openat(\textcolor{red}{AT_FDCWD}, "/etc/ld.so.cache", \textcolor{red}{O_RDONLY|O_CLOEXEC}) = 3
+openat(\textcolor{red}{AT_FDCWD}, "/lib64/libc.so.6", \textcolor{red}{O_RDONLY|O_CLOEXEC}) = 3
+openat(\textcolor{red}{AT_FDCWD}, "/dev/null", \textcolor{red}{O_RDONLY}) = 3
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+
+\begin{block}{\large strace \textbf{-X verbose} -e /open cat /dev/null}
+\scriptsize
+\begin{alltt}
+openat(\textcolor{red}{-100 /* AT_FDCWD */}, "/etc/ld.so.cache",
+       \textcolor{red}{0x80000 /* O_RDONLY|O_CLOEXEC */}) = 3
+openat(\textcolor{red}{-100 /* AT_FDCWD */}, "/lib64/libc.so.6",
+       \textcolor{red}{0x80000 /* O_RDONLY|O_CLOEXEC */}) = 3
+openat(\textcolor{red}{-100 /* AT_FDCWD */}, "/dev/null", \textcolor{red}{0 /* O_RDONLY */}) = 3
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+
+\begin{block}{\large strace \textbf{-X raw} -e /open cat /dev/null}
+\scriptsize
+\begin{alltt}
+openat(\textcolor{red}{-100}, "/etc/ld.so.cache", \textcolor{red}{0x80000}) = 3
+openat(\textcolor{red}{-100}, "/lib64/libc.so.6", \textcolor{red}{0x80000}) = 3
+openat(\textcolor{red}{-100}, "/dev/null", \textcolor{red}{0})            = 3
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System time spent in syscalls: \textbf{-c} option \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large strace \textbf{-c} sleep 1}
+\small
+\begin{alltt}
+% time  seconds usecs/call calls errors syscall
+------ -------- ---------- ----- ------ ----------
+ 31.45 0.000078         19     4        close
+ 25.40 0.000063         15     4        mprotect
+\textcolor{red}{ 12.90 0.000032         32     1        nanosleep}
+ 11.29 0.000028          5     5        mmap
+  8.47 0.000021          5     4        brk
+  8.06 0.000020         20     1        munmap
+  2.42 0.000006          6     1        arch_prctl
+  0.00 0.000000          0     1        read
+  0.00 0.000000          0     2        fstat
+  0.00 0.000000          0     1      1 access
+  0.00 0.000000          0     1        execve
+  0.00 0.000000          0     2        openat
+------ -------- ---------- ----- ------ ----------
+100.00 0.000248               27      1 total
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Wall clock time spent in syscalls: \textbf{-c -w} option \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large strace \textbf{-c -w} sleep 1}
+\small
+\begin{alltt}
+% time  seconds usecs/call calls errors syscall
+------ -------- ---------- ----- ------ ----------
+\textcolor{red}{ 99.91 1.000184    1000183     1        nanosleep}
+  0.04 0.000367        366     1        execve
+  0.02 0.000216         53     4        close
+  0.01 0.000087         17     5        mmap
+  0.01 0.000075         18     4        mprotect
+  0.01 0.000052         13     4        brk
+  0.00 0.000037         18     2        openat
+  0.00 0.000027         26     1        munmap
+  0.00 0.000024         12     2        fstat
+  0.00 0.000019         19     1      1 access
+  0.00 0.000015         14     1        read
+  0.00 0.000013         13     1        arch_prctl
+------ -------- ---------- ----- ------ ----------
+100.00 1.001116               27      1 total
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Running as a detached grandchild: \textbf{-D} option \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large foreground strace}
+\begin{alltt}
+$ echo $$ && strace -e none sh -c 'echo $PPID'
+1234
+23456
++++ exited with 0 +++
+$ echo $$ && strace -e none sh -c 'echo $PPID'
+1234
+23459
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+
+\begin{block}{\large background strace}
+\begin{alltt}
+$ echo $$ && strace \textcolor{red}{-D} -e none sh -c 'echo $PPID'
+1234
+1234
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Netlink socket parsers \hfill [\insertframenumber/\inserttotalframenumber]}
+\tiny
+\begin{block}{\large Currently supported netlink protocols}
+\begin{itemize}
+\item NETLINK\_AUDIT
+\item NETLINK\_CRYPTO
+\item NETLINK\_KOBJECT\_UEVENT
+\item NETLINK\_NETFILTER
+\item NETLINK\_ROUTE
+\item NETLINK\_SELINUX
+\item NETLINK\_SOCK\_DIAG
+\item NETLINK\_XFRM
+\item NETLINK\_GENERIC
+\end{itemize}
+\end{block}
+
+\begin{block}{\large NETLINK\_ROUTE: ip route list table all}
+\begin{alltt}
+broadcast 127.0.0.0 dev lo table local proto kernel scope link src 127.0.0.1
+
+local 127.0.0.0/8 dev lo table local proto kernel scope host src 127.0.0.1
+
+local 127.0.0.1 dev lo table local proto kernel scope host src 127.0.0.1
+
+broadcast 127.255.255.255 dev lo table local proto kernel scope link src 127.0.0.1
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Netlink socket parsers: NETLINK\_ROUTE \hfill [\insertframenumber/\inserttotalframenumber]}
+\tiny
+\begin{block}{\large strace -e trace=sendto,recvmsg ip route list}
+\begin{alltt}
+sendto(3, \{\{len=40, type=RTM\_GETROUTE, flags=NLM\_F\_REQUEST|NLM\_F\_DUMP, seq=1357924680, pid=0\},
+ \textcolor{blue}{\{rtm\_family=AF\_UNSPEC, rtm\_dst\_len=0, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_UNSPEC, rtm\_protocol=RTPROT\_UNSPEC, rtm\_scope=RT\_SCOPE\_UNIVERSE, rtm\_type=RTN\_UNSPEC, rtm\_flags=0\}},
+  \textcolor{red}{\{nla\_len=0, nla\_type=RTA\_UNSPEC\}}\}, 40, 0, NULL, 0) = 40
+
+\smallskip
+recvmsg(3, \{msg\_name=\{sa\_family=AF\_NETLINK, nl\_pid=0, nl\_groups=00000000\}, msg\_namelen=12, msg\_iov=[\{iov\_base=[
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_LINK, rtm\_type=RTN\_BROADCAST, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, inet\_addr("127.0.0.0")\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, inet\_addr("127.0.0.1")\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}},
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=8, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_HOST, rtm\_type=RTN\_LOCAL, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, inet\_addr("127.0.0.0")\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, inet\_addr("127.0.0.1")\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}},
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_HOST, rtm\_type=RTN\_LOCAL, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, inet\_addr("127.0.0.1")\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, inet\_addr("127.0.0.1")\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}},
+\textcolor{brown}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_LINK, rtm\_type=RTN\_BROADCAST, rtm\_flags=0\}},
+  \textcolor{red}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, inet\_addr("127.255.255.255")\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, inet\_addr("127.0.0.1")\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}}
+], iov\_len=32768\}], msg\_iovlen=1, msg\_controllen=0, msg\_flags=0\}, 0) = 240 \\
+\ldots
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Postprocessing: \textbf{strace-log-merge} \hfill [\insertframenumber/\inserttotalframenumber]}
+\scriptsize
+\begin{alltt}
+$ strace -o log -ff -tt -e trace=execve,nanosleep sh -c 'sleep 0.1 & sleep 0.2 & sleep 0.3'
+$ strace-log-merge log
+13475 21:13:52.040837 execve("/bin/sh", ["sh", "-c", "sleep 0.1 & sleep 0.2 & sleep 0."...],
+      0x7ffde54b2450 /* 33 vars */) = 0
+\textcolor{blue}{13478 21:13:52.044050 execve("/bin/sleep", ["sleep", "0.3"], 0x5631be4f87a8 /* 33 vars */) = 0}
+\textcolor{red}{13476 21:13:52.044269 execve("/bin/sleep", ["sleep", "0.1"], 0x5631be4f87a8 /* 33 vars */) = 0}
+\textcolor{green}{13477 21:13:52.044389 execve("/bin/sleep", ["sleep", "0.2"], 0x5631be4f87a8 /* 33 vars */) = 0}
+\textcolor{blue}{13478 21:13:52.046207 nanosleep(\{tv_sec=0, tv_nsec=300000000\}, NULL) = 0}
+\textcolor{red}{13476 21:13:52.046303 nanosleep(\{tv_sec=0, tv_nsec=100000000\}, NULL) = 0}
+\textcolor{green}{13477 21:13:52.046318 nanosleep(\{tv_sec=0, tv_nsec=200000000\}, NULL) = 0}
+\textcolor{red}{13476 21:13:52.146852 +++ exited with 0 +++}
+13475 21:13:52.146942 --- SIGCHLD \{si_signo=SIGCHLD, si_code=CLD_EXITED,
+      si_pid=13476, si_uid=1000, si_status=0, si_utime=0, si_stime=0\} ---
+\textcolor{green}{13477 21:13:52.247782 +++ exited with 0 +++}
+13475 21:13:52.247885 --- SIGCHLD \{si_signo=SIGCHLD, si_code=CLD_EXITED,
+      si_pid=13477, si_uid=1000, si_status=0, si_utime=0, si_stime=0\} ---
+\textcolor{blue}{13478 21:13:52.347680 +++ exited with 0 +++}
+13475 21:13:52.347786 --- SIGCHLD \{si_signo=SIGCHLD, si_code=CLD_EXITED,
+      si_pid=13478, si_uid=1000, si_status=0, si_utime=0, si_stime=0\} ---
+13475 21:13:52.348069 +++ exited with 0 +++
+\end{alltt}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call tampering: fault injection \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large -e \textbf{inject}=\textit{set}:\textbf{error}=\textit{errno}[:\textbf{when}=\textit{expr}][:\textbf{syscall}=\textit{syscall}]}
+\textbf{inject}=\textit{set} -- fault injection for the specified set of syscalls \\
+\textbf{error}=\textit{errno} -- the error code to fail syscalls with \\
+\textbf{when}=\textit{expr} -- when to inject, in \textit{first[+[step]]} form \\
+\textbf{syscall}=\textit{syscall} -- inject the specified syscall instead of -1
+\end{block}
+
+\begin{block}{\large strace -e /open -e \textbf{inject}=all:\textbf{error}=EACCES:\textbf{when}=3 \textbackslash\\
+cat /dev/full /dev/null}
+\begin{alltt}
+openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+\textcolor{red}{openat(AT_FDCWD, "/dev/full", O_RDONLY)
+ = -1 EACCES (Permission denied) (INJECTED)}
+cat: /dev/full: Permission denied
+openat(AT_FDCWD, "/dev/null", O_RDONLY) = 3
++++ exited with 1 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call tampering: fault injection \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large python3.5 bug: error opening /dev/urandom}
+\small
+\begin{alltt}
+$ strace -P /dev/urandom -e inject=\%file:error=ENOENT python3
+\textcolor{red}{openat(AT_FDCWD, "/dev/urandom", O_RDONLY|O_CLOEXEC)
+ = -1 ENOENT (No such file or directory) (INJECTED)}
+Fatal Python error: Failed to open /dev/urandom
+--- SIGSEGV \{si_signo=SIGSEGV, si_code=SEGV_MAPERR, si_addr=0x50\} ---
++++ killed by SIGSEGV +++
+Segmentation fault
+\end{alltt}
+\end{block}
+
+\begin{block}{\large python3.5 bug: error reading /dev/urandom}
+\small
+\begin{alltt}
+$ strace -a0 -e read -P /dev/urandom -e inject=all:error=EIO python3
+\textcolor{red}{read(3, 0x8db610, 24) = -1 EIO (Input/output error) (INJECTED)}
+Fatal Python error: Failed to read bytes from /dev/urandom
+--- SIGSEGV \{si_signo=SIGSEGV, si_code=SEGV_MAPERR, si_addr=0x50\} ---
++++ killed by SIGSEGV +++
+Segmentation fault
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call tampering: fault injection \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large glibc <= 2.25 dynamic linker bug}
+\small
+\begin{alltt}
+$ strace -e mprotect -efault=all:error=EPERM:when=1 pwd
+\textcolor{red}{mprotect(0x7fabcd00f000, 2097152, PROT_NONE)
+ = -1 EPERM (Operation not permitted) (INJECTED)}
+mprotect(0x7fabcd20f000, 16384, PROT_READ) = 0
+mprotect(0x606000, 4096, PROT_READ)     = 0
+mprotect(0x7fabcd441000, 4096, PROT_READ) = 0
+/
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+
+\begin{block}{\large glibc >= 2.26: with a proper check}
+\small
+\begin{alltt}
+$ strace -e mprotect -efault=all:error=EPERM:when=1 pwd
+\textcolor{red}{mprotect(0x7fabcd00f000, 2097152, PROT_NONE)
+ = -1 EPERM (Operation not permitted) (INJECTED)}
+pwd: error while loading shared libraries: libc.so.6:
+ cannot change memory protections
++++ exited with 127 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call tampering: return value injection \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large -e \textbf{inject}=\textit{set}:\textbf{retval}=\textit{value}[:\textbf{when}=\textit{expr}][:\textbf{syscall}=\textit{syscall}]}
+\textbf{inject}=\textit{set} -- fault injection for the specified set of syscalls \\
+\textbf{retval}=\textit{value} -- the return value to return \\
+\textbf{when}=\textit{expr} -- when to inject, in \textit{first[+[step]]} form \\
+\textbf{syscall}=\textit{syscall} -- inject the specified syscall instead of -1
+\end{block}
+
+\begin{block}{\large example: recovery of temporary files}
+\begin{alltt}
+$ cat script.sh
+t=`mktemp`; trap 'rm -f "$t"' 0; echo secret $$ > $t
+$ strace -qq -f -e signal=none -e /unlink
+  -e inject=all:retval=0 sh script.sh
+[pid 347] \textcolor{red}{unlinkat(AT_FDCWD, "/tmp/tmp.l1AlwyCYH3", 0) = 0 (INJECTED)}
+$ cat /tmp/tmp.l1AlwyCYH3
+secret 345
+\end{alltt}
+\end{block}
+
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call tampering: delay injection \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large syscall delay injection}
+strace -e \textbf{inject}=\textit{set}:\textbf{delay\_enter}=\textit{usecs} \\
+strace -e \textbf{inject}=\textit{set}:\textbf{delay\_exit}=\textit{usecs}
+\end{block}
+
+\begin{block}{\large dd if=/dev/zero of=/dev/null bs=1M count=10}
+\begin{alltt}
+10+0 records in
+10+0 records out
+10485760 bytes (10 MB, 10 MiB) copied, \textcolor{red}{0.00211354} s, \textcolor{red}{5.0 GB}/s
+\end{alltt}
+\end{block}
+
+\begin{block}{\large strace -einject=write:delay\_exit=100000 -ewrite -o/dev/null \textbackslash\\
+dd if=/dev/zero of=/dev/null bs=1M count=10}
+\begin{alltt}
+10+0 records in
+10+0 records out
+10485760 bytes (10 MB, 10 MiB) copied, \textcolor{red}{1.10658} s, \textcolor{red}{9.5 MB}/s
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+{
+\setbeamertemplate{footline}{}
+\begin{frame}{Questions?}
+	\begin{columns}
+		\column{7cm}
+\begin{block}{\large homepage}
+	https://strace.io
+\end{block}
+\begin{block}{\large strace.git, strace-talks.git}
+	https://github.com/strace/strace.git
+
+	https://gitlab.com/strace/strace.git
+
+\smallskip
+
+	https://github.com/strace/strace-talks.git
+
+	https://gitlab.com/strace/strace-talks.git
+\end{block}
+\begin{block}{\large mailing list}
+	strace-devel@lists.strace.io
+\end{block}
+\begin{block}{\large IRC channel}
+	\#strace@freenode
+\end{block}
+		\column{3cm}
+			\centerline{\includegraphics[height=8cm]{strace-straus.pdf}}
+	\end{columns}
+\end{frame}
+}
+
+\end{document}
