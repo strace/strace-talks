@@ -5,7 +5,7 @@
 % or any later version published by the Free Software Foundation;
 % with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
 
-\documentclass[unicode]{beamer}
+\documentclass[unicode,aspectratio=169]{beamer}
 
 \mode<presentation>
 {
@@ -236,7 +236,8 @@ Date:   Tue Feb 5 16:36:13 2013 +0100
 
 %%%%%%%
 \begin{frame}[fragile]{Syscall data retrieval}
-\begin{block}{\large Use \texttt{process\_vm\_readv(2)}}
+%\begin{block}{\large Use \texttt{process\_vm\_readv(2)}}
+\begin{block}{}
 \begin{scriptsize}
 \begin{verbatim}
 commit 3af224c5cd8a64a6af3f875549ff821e2b5cb211
@@ -288,7 +289,8 @@ Date:   Sun Sep 15 15:47:01 2019 +0000
 
 %%%%%%%
 \begin{frame}[fragile]{General optimisations}
-\begin{block}{\large Tracee descriptor search}
+%\begin{block}{\large Tracee descriptor search}
+\begin{block}{}
 \begin{scriptsize}
 \begin{verbatim}
 commit e8cb814cf23dad36319205447eddb857a98889a2
@@ -396,7 +398,8 @@ int main(int argc, char **argv)
 
 %%%%%%%
 \begin{frame}[fragile]{Tracee processing fairness fix \hfill [3/3]}
-\begin{block}{\large Final upstreamed commit}
+%\begin{block}{\large Final upstreamed commit}
+\begin{block}{}
 \begin{scriptsize}
 \begin{verbatim}
 commit e0f0071b36215de8a592bf41ec007a794b550d45
