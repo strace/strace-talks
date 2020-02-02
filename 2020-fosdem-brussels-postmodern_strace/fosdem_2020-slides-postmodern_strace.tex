@@ -1,0 +1,875 @@
+% Copyright (C) 2012-2020 Dmitry V. Levin <ldv@altlinux.org>
+% Permission is granted to copy, distribute and/or modify this document
+% under the terms of the GNU Free Documentation License, Version 1.2
+% or any later version published by the Free Software Foundation;
+% with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+\documentclass[unicode,aspectratio=169,xcolor={table,dvipsnames,usernames}]{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[english]{babel}
+\usepackage{alltt}
+
+\colorlet{darkred}{BrickRed}
+\colorlet{darkgreen}{OliveGreen}
+
+\pgfdeclareimage[height=2cm]{title-logo}{fosdem.pdf}
+\pgfdeclareimage[height=0.6cm]{left-corner-logo}{basealt.jpg}
+\pgfdeclareimage[height=1.2cm]{right-corner-logo}{strace-straus.pdf}
+\pgfdeclareimage[height=5.8cm]{wat}{wat.pdf}
+\pgfdeclareimage[height=7cm]{kaleidoscope}{kaleidoscope.jpg}
+\pgfdeclareimage[height=8cm]{strace-logo}{strace-straus.pdf}
+
+\usetheme{Warsaw}
+\setbeamertemplate{headline}{}
+\setbeamertemplate{footline}{%
+	\pgfuseimage{left-corner-logo}%
+	\hfill%
+	\pgfuseimage{right-corner-logo}%
+}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{logo}{}
+\setbeamercovered{transparent}
+
+\title{\Huge Postmodern strace}
+\author{\Huge Dmitry~Levin}
+\date{\Large Brussels, 2020}
+\titlegraphic{\pgfuseimage{title-logo}}
+
+\begin{document}
+
+%%%%%%%
+\begin{frame}[noframenumbering]
+\titlepage
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Traditional strace \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Printing instruction pointer and timestamps}
+\begin{itemize}
+\item print instruction pointer: \textbf{-i} option
+\item print timestamps: \textbf{-r}, \textbf{-t}, \textbf{-tt}, \textbf{-ttt}, and \textbf{-T} options
+\end{itemize}
+\end{block}
+
+\begin{block}{Size and format of strings}
+\begin{itemize}
+\item string size: \textbf{-s} option
+\item string format: \textbf{-x} and \textbf{-xx} options
+\end{itemize}
+\end{block}
+
+\begin{block}{Verbosity of syscall decoding}
+\begin{itemize}
+\item abbreviate output: \textbf{-e abbrev=\textit{set}}, \textbf{-v} option
+\item dereference structures: \textbf{-e verbose=\textit{set}}
+\item print raw undecoded syscalls: \textbf{-e raw=\textit{set}}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Traditional strace \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Printing signals}
+\begin{itemize}
+\item print signals: \textbf{-e signal=\textit{set}}
+\end{itemize}
+\end{block}
+
+\begin{block}{Dumping}
+\begin{itemize}
+\item dump the data read from the specified descriptors: \textbf{-e read=\textit{set}}
+\item dump the data written to the specified descriptors: \textbf{-e write=\textit{set}}
+\end{itemize}
+\end{block}
+
+\begin{block}{Redirecting output to files or pipelines}
+\begin{itemize}
+\item write the trace to a file or pipeline: \textbf{-o \textit{filename}} option
+\item write traces of processes to separate files: \textbf{-ff -o \textit{filename}}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Traditional strace \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{System call filtering}
+\begin{itemize}
+\item trace only the specified set of system calls: \textbf{-e trace=\textit{set}}
+\end{itemize}
+\end{block}
+
+\begin{block}{System call statistics}
+\begin{itemize}
+\item count time, calls, and errors for each system call: \textbf{-c} option
+\item sort the histogram printed by the \textbf{-c} option: \textbf{-S \textit{sortby}} option
+\end{itemize}
+\end{block}
+
+\begin{block}{Tracing control}
+\begin{itemize}
+\item attach to existing processes: \textbf{-p \textit{pid}} option
+\item trace child processes: \textbf{-f} option
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%
+\begin{frame}{Modern strace \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Tracing output format}
+\begin{itemize}
+\item pathnames accessed by name or descriptor: \textbf{-y} option
+\item network protocol associated with descriptors: \textbf{-yy} option
+\item stack of function calls: \textbf{-k} option
+\end{itemize}
+\end{block}
+
+\begin{block}{System call filtering}
+\begin{itemize}
+\item pathnames accessed by name or descriptor: \textbf{-P} option
+\item regular expressions: -e \textbf{trace}=/\textit{regexp}
+\item optional specifications: -e \textbf{trace}=?\textit{spec}
+\item new syscall classes: \%stat, \%lstat, \%fstat, \%statfs, \%fstatfs, \%\%stat, \%\%statfs
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Modern strace \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{System call statistics}
+\begin{itemize}
+\item wall clock time spent in syscalls: \textbf{-w} option
+\item combine statistics with regular output: \textbf{-C} option
+\end{itemize}
+\end{block}
+
+\begin{block}{Tracing control}
+\begin{itemize}
+\item attach to multiple processes: \textbf{-p \textit{pid\_set}} option
+\item detach on execve: \textbf{-b execve} option
+\item run as a detached grandchild: \textbf{-D} option
+\item interruptibility: \textbf{-I} option
+\item postprocessing: \textbf{strace-log-merge}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Modern strace \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{System call tampering}
+\begin{itemize}
+\item fault injection: \\
+-e \textbf{inject}=\textit{set}:\textbf{error}=\textit{errno}[:\textbf{when}=\textit{expr}][:\textbf{syscall}=\textit{syscall}]
+\item return value injection: \\
+-e \textbf{inject}=\textit{set}:\textbf{retval}=\textit{value}[:\textbf{when}=\textit{expr}][:\textbf{syscall}=\textit{syscall}]
+\item signal injection: \\
+-e \textbf{inject}=\textit{set}:\textbf{signal}=\textit{set}
+\item delay injection: \\
+-e \textbf{inject}=\textit{set}:\textbf{delay\_enter}=\textit{usecs} \\
+-e \textbf{inject}=\textit{set}:\textbf{delay\_exit}=\textit{usecs}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Postmodern strace\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{New features since FOSDEM 2018}
+\begin{itemize}
+\item PTRACE\_GET\_SYSCALL\_INFO API support
+\item system call return status filtering: \\ \textbf{-e status}=\textit{set}, \textbf{-z}, \textbf{-Z} options
+\item seccomp-assisted system call filtering: \textbf{-{}-seccomp-bpf} option
+\item format of named constants and flags: \textbf{-X} option
+\item support of new system calls ($ \approx 35$)
+\item elaborate syscall parsers
+\item long options
+\item copyleft license
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{x86-64 architecture in Linux kernel \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Operating modes}
+\begin{description}
+	\item[64-bit mode]: CS register value == 0x33
+	\item[32-bit mode]: CS register value == 0x23
+\end{description}
+\end{block}
+
+\begin{block}{Several methods of system call invocation}
+\begin{description}
+	\item[int 0x80]: Legacy 32-bit
+	\item[sysenter]: Fast 32-bit
+	\item[syscall]: 64-bit
+\end{description}
+\end{block}
+
+Surprise: 64-bit processes can invoke both 64-bit and 32-bit system calls.
+
+\begin{block}{Linux API provides}
+\begin{itemize}
+	\item The system call number
+	\item The value of CS register
+	\item The value of RIP register
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Linux system call tracers on x86-64 architecture \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{Legacy method of obtaining system call information}
+\begin{itemize}
+	\item Fetch the system call number (PTRACE\_PEEKUSER ORIG\_RAX)
+	\item Fetch the value of CS register (PTRACE\_PEEKUSER CS)
+	\item {\bf Guess the system call bitness by the value of CS register}
+	\item Determine the system call by its number and bitness
+	\item Fetch the system call arguments accordingly
+\end{itemize}
+\end{block}
+
+\begin{block}{Traditional method of obtaining system call information}
+\begin{itemize}
+	\item Fetch the whole set of registers (PTRACE\_GETREGSET NT\_PRSTATUS), \\
+		the return value is decided by the value of CS register
+	\item {\bf Guess the system call bitness by the return value}
+	\item Determine the system call by its number and bitness
+	\item Interpret other registers as the system call arguments accordingly
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Process bitness does not match syscall bitness \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Example based on Debian bug report \#459820 submitted in 2008}
+\begin{alltt}
+#include <stdio.h>
+#include <unistd.h>
+int main() \{
+    setlinebuf(stdout);
+    puts("------------");
+    \textcolor{darkred}{__asm__("movl $2, %eax; int $0x80");}
+    printf("[I am %d]{\textbackslash}n", getpid());
+    return 0;
+\}
+\end{alltt}
+\end{block}
+
+\begin{block}{Regular invocation: ./debbug459820}
+\begin{alltt}
+------------
+[I am 23450]
+[I am 23451]
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Process bitness does not match syscall bitness \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{columns}
+	\column{10cm}
+		\Large
+		\begin{block}{Invocation under strace}
+\begin{alltt}
+$ strace -f ./debbug459820 > /dev/null
+\ldots
+write(1, "------------{\textbackslash}n", 13) = 13
+strace: Process 23451 attached
+\textcolor{darkred}{open(0x1, O_RDONLY|O_CREAT|O_TRUNC
+|O_DSYNC|O_DIRECT|O_NOATIME|O_CLOEXEC
+|O_PATH|O_TMPFILE|0x1000020, 0134300)
+= 23451}
+\ldots
+\end{alltt}
+		\end{block}
+	\column{3cm}
+\end{columns}
+\end{frame}
+
+%%%%%%%
+{
+\begin{frame}[fragile,noframenumbering]{Process bitness does not match syscall bitness \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{columns}
+	\column{10cm}
+		\Large
+		\begin{block}{Invocation under strace}
+\begin{alltt}
+$ strace -f ./debbug459820 > /dev/null
+\ldots
+write(1, "------------{\textbackslash}n", 13) = 13
+strace: Process 23451 attached
+\textcolor{darkred}{open(0x1, O_RDONLY|O_CREAT|O_TRUNC
+|O_DSYNC|O_DIRECT|O_NOATIME|O_CLOEXEC
+|O_PATH|O_TMPFILE|0x1000020, 0134300)
+= 23451}
+\ldots
+\end{alltt}
+		\end{block}
+	\column{3cm}
+		\begin{figure}
+			\centering
+			\pgfuseimage{wat}
+		\end{figure}
+\end{columns}
+\end{frame}
+}
+
+%%%%%%%
+\begin{frame}[fragile]{Process bitness does not match syscall bitness \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{\$ strace -f -z ./debbug459820 > /dev/null}
+\begin{alltt}
+write(1, "------------{\textbackslash}n", 13)          = 13
+strace: Process 23451 attached
+\textcolor{darkred}{open(0x1, O_RDONLY|O_CREAT|O_TRUNC|O_DSYNC|O_DIRECT
+|O_NOATIME|O_CLOEXEC|O_PATH|O_TMPFILE|0x1000020,
+0134300) = 23451}
+[pid 23450] getpid()                    = 23450
+[pid 23451] getpid()                    = 23451
+[pid 23450] write(1, "[I am 23450]{\textbackslash}n", 13) = 13
+[pid 23451] write(1, "[I am 23451]{\textbackslash}n", 13) = 13
+[pid 23450] +++ exited with 0 +++
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Process bitness does not match syscall bitness: problem \hfill [\insertframenumber/\inserttotalframenumber]}
+\scriptsize
+\begin{columns}
+	\column{11cm}
+		\begin{block}{for i in `seq 0 9`; do strace -qq -esignal=none -eopen ./debbug459820 >/dev/null; done}
+		%\textcolor{blue}{\(\longrightarrow\)}
+\begin{alltt}
+open(0x1, O_RDONLY|O_CREAT|O_EXCL|O_TRUNC|O_SYNC|O_DIRECT|O_LARGEFILE|
+          O_NOFOLLOW|O_CLOEXEC|0x4f000008, 0151330) = 15565
+open(0x1, O_RDONLY|O_EXCL|O_NOCTTY|O_APPEND|O_NONBLOCK|O_DSYNC|O_TMPFILE|
+          FASYNC|0x57800008, 036630) = 15570
+open(0x1, O_RDONLY|O_EXCL|O_NOCTTY|O_APPEND|O_SYNC|O_LARGEFILE|O_NOATIME|
+          O_PATH|O_DIRECTORY|FASYNC|0x8e800038) = 15575
+open(0x1, O_RDONLY|O_CREAT|O_EXCL|O_APPEND|O_DSYNC|O_DIRECT|O_NOFOLLOW|
+          O_PATH|O_DIRECTORY|FASYNC|0xe2800018, 072350) = 15580
+open(0x1, O_RDONLY|O_CREAT|O_NOCTTY|O_SYNC|O_NOFOLLOW|O_CLOEXEC|FASYNC|
+          0xcf800038, 030610) = 15585
+open(0x1, O_RDONLY|O_TRUNC|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY|FASYNC|
+          0x11800008) = 15590
+open(0x1, O_RDONLY|O_CREAT|O_EXCL|O_NOCTTY|__O_SYNC|O_LARGEFILE|O_NOATIME|
+          O_CLOEXEC|O_PATH|O_TMPFILE|FASYNC|0x43000038, 0121010) = 15595
+open(0x1, O_RDONLY|O_EXCL|O_NONBLOCK|__O_SYNC|O_DIRECT|O_CLOEXEC|O_PATH|
+          __O_TMPFILE|FASYNC|0x3a800038, 064310) = 15600
+open(0x1, O_RDONLY|O_CREAT|O_EXCL|O_NOCTTY|O_NONBLOCK|O_DSYNC|O_DIRECT|
+          O_LARGEFILE|O_DIRECTORY|0x47800028, 0154770) = 15610
+open(0x1, O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_PATH|FASYNC|0x5e000008) = 15605
+\end{alltt}
+		\end{block}
+	\column{3cm}
+		\begin{figure}
+			\centering
+			\pgfuseimage{kaleidoscope}
+		\end{figure}
+\end{columns}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{PTRACE\_GET\_SYSCALL\_INFO support \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\Large Linux >= v5.3-rc1}
+\begin{verbatim}
+$ git log -i -E --author=altlinux.org \
+  --grep='ptrace|syscall_a|elf-em|selftests' \
+  v4.20-rc2..v5.3-rc1
+\end{verbatim}
+\begin{itemize}
+	\item 29 commits, 47 files changed, 703 insertions, 125 deletions
+	\item 2 authors: Elvira Khabirova, Dmitry Levin
+	\item 22 persons added their Acked-by/Reviewed-by/Signed-off-by
+	\item 07.11.2018: first RFC patch submitted
+	\item 12.11.2018: first patch committed
+	\item 13.12.2018: API finalized
+	\item 17.07.2019: last patch committed
+	\item Implements PTRACE\_GET\_SYSCALL\_INFO on those 19 architectures
+		that enable CONFIG\_HAVE\_ARCH\_TRACEHOOK
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{PTRACE\_GET\_SYSCALL\_INFO support \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{Linux PTRACE\_GET\_SYSCALL\_INFO API}
+\scriptsize
+\begin{alltt}
+struct ptrace_syscall_info \{
+  __u8 op;			\hfill /* Type of system call stop */
+  \textcolor{darkgreen}{__aligned_u32 arch;	\hfill /* AUDIT_ARCH_* value; see seccomp(2) */}
+  __u64 instruction_pointer;	\hfill /* CPU instruction pointer */
+  __u64 stack_pointer;		\hfill /* CPU stack pointer */
+  union \{
+    struct \{			\hfill /* op == PTRACE_SYSCALL_INFO_ENTRY */
+      __u64 nr;			\hfill /* Syscall number */
+      __u64 args[6];		\hfill /* Syscall arguments */
+    \} entry;
+    struct \{			\hfill /* op == PTRACE_SYSCALL_INFO_EXIT */
+      __s64 rval;		\hfill /* Syscall return value */
+      __u8 is_error;		\hfill /* Does rval contain an error value? */
+    \} exit;
+    struct \{			\hfill /* op == PTRACE_SYSCALL_INFO_SECCOMP */
+      __u64 nr;			\hfill /* Syscall number */
+      __u64 args[6];		\hfill /* Syscall arguments */
+      __u32 ret_data;		\hfill /* SECCOMP_RET_DATA portion of SECCOMP_RET_TRACE */
+    \} seccomp;
+  \};
+\};
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{PTRACE\_GET\_SYSCALL\_INFO support \hfill [\insertframenumber/\inserttotalframenumber]}
+
+{\Large strace >= v4.26, linux >= v5.3-rc1}
+\begin{block}{Invocation under strace: strace -f -z ./debbug459820 > /dev/null}
+\begin{alltt}
+\ldots
+write(1, "------------{\textbackslash}n", 13)          = 13
+\textcolor{darkred}{strace: [ Process PID=23450 runs in 32 bit mode. ]}
+strace: Process 23451 attached
+fork()                                  = 23451
+\textcolor{darkred}{strace: [ Process PID=23450 runs in 64 bit mode. ]}
+[pid 23450] getpid()                    = 23450
+\textcolor{darkred}{strace: [ Process PID=23451 runs in 64 bit mode. ]}
+[pid 23451] getpid()                    = 23451
+[pid 23450] write(1, "[I am 23450]{\textbackslash}n", 13) = 13
+[pid 23451] write(1, "[I am 23451]{\textbackslash}n", 13) = 13
+[pid 23450] +++ exited with 0 +++
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+%%%%%%%
+\begin{frame}{System call return status filtering: \textbf{-e status}=\textit{set} \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Introduced in v5.2 (July 2019)}
+\large
+Print only system calls with the specified return status. \\
+\textit{set} can include the following elements:
+\begin{description}
+	\item[successful]: returned without an error code, alias to \textbf{-z}
+	\item[failed]: returned with an error code, alias to \textbf{-Z}
+	\item[unfinished]: did not return
+	\item[detached]: detached before return
+	\item[unavailable]: returned but failed to fetch the error status
+\end{description}
+\end{block}
+The default is \textbf{-e status}=\textbf{all}.
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call return status filtering: \textbf{-z}, \textbf{-Z} \hfill [\insertframenumber/\inserttotalframenumber]}
+\scriptsize
+\begin{block}{env -i LD\_LIBRARY\_PATH=/lib64 strace -z -e\%file /bin/cat < /dev/null}
+\begin{alltt}
+execve("/bin/cat", ["/bin/cat"], 0x7ffc2b781ca0 /* 1 var */) = 0
+openat(AT_FDCWD, "/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\begin{block}{env -i LD\_LIBRARY\_PATH=/lib64 strace -Z -e\%file /bin/cat </dev/null}
+\begin{alltt}
+access("/etc/ld.so.preload", R_OK) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib64/tls/x86_64/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No suc
+stat("/lib64/tls/x86_64/x86_64", 0x7ffdcc6a0c20) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib64/tls/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file
+stat("/lib64/tls/x86_64", 0x7ffdcc6a0c20) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib64/tls/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file
+stat("/lib64/tls/x86_64", 0x7ffdcc6a0c20) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib64/tls/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or dire
+stat("/lib64/tls", 0x7ffdcc6a0c20) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib64/x86_64/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such fi
+stat("/lib64/x86_64/x86_64", 0x7ffdcc6a0c20) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib64/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or d
+stat("/lib64/x86_64", 0x7ffdcc6a0c20) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib64/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or d
+stat("/lib64/x86_64", 0x7ffdcc6a0c20) = -1 ENOENT (No such file or directory)
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call return status filtering: \textbf{-z} aggregation \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{strace -o log -f -e signal=none -e trace=execve,nanosleep {\textbackslash} \\
+	sh -c 'sleep 0.1 \& sleep 0.2 \& sleep 0.3' \&\& cat log}
+\scriptsize
+\begin{alltt}
+13475 execve("/bin/sh", ["sh", "-c", "sleep 0.1 & sleep 0.2 & sleep 0."...],
+      0x5631be4f87a8 /* 42 vars */) = 0
+13476 execve("/bin/sleep", ["sleep", "0.1"], 0xe4c4f0 /* 33 vars */ <unfinished ...>
+13477 execve("/bin/sleep", ["sleep", "0.2"], 0xe4c4f0 /* 33 vars */ <unfinished ...>
+13478 execve("/bin/sleep", ["sleep", "0.3"], 0xe4c4f0 /* 33 vars */ <unfinished ...>
+13476 <... execve resumed>)             = 0
+13477 <... execve resumed>)             = 0
+13478 <... execve resumed>)             = 0
+13476 nanosleep({tv_sec=0, tv_nsec=100000000},  <unfinished ...>
+13477 nanosleep({tv_sec=0, tv_nsec=200000000},  <unfinished ...>
+13478 nanosleep({tv_sec=0, tv_nsec=300000000},  <unfinished ...>
+13476 <... nanosleep resumed>NULL)      = 0
+13476 +++ exited with 0 +++
+13477 <... nanosleep resumed>NULL)      = 0
+13477 +++ exited with 0 +++
+13478 <... nanosleep resumed>NULL)      = 0
+13478 +++ exited with 0 +++
+13475 +++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call return status filtering: \textbf{-z} aggregation \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{strace -o log \textbf{-z} -f -e signal=none -e trace=execve,nanosleep {\textbackslash} \\
+	sh -c 'sleep 0.1 \& sleep 0.2 \& sleep 0.3' \&\& cat log}
+\small
+\begin{alltt}
+13475 execve("/bin/sh", ["sh", "-c", "sleep 0.1 & sleep 0.2 & sleep 0."...],
+      0x5631be4f87a8 /* 42 vars */) = 0
+13476 execve("/bin/sleep", ["sleep", "0.1"], 0xe4c4f0 /* 33 vars */) = 0
+13477 execve("/bin/sleep", ["sleep", "0.2"], 0xe4c4f0 /* 33 vars */) = 0
+13478 execve("/bin/sleep", ["sleep", "0.3"], 0xe4c4f0 /* 33 vars */) = 0
+13476 nanosleep({tv_sec=0, tv_nsec=100000000}, NULL) = 0
+13476 +++ exited with 0 +++
+13477 nanosleep({tv_sec=0, tv_nsec=200000000}, NULL) = 0
+13477 +++ exited with 0 +++
+13478 nanosleep({tv_sec=0, tv_nsec=300000000}, NULL) = 0
+13478 +++ exited with 0 +++
+13475 +++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{System call return status filtering: \textbf{-Z} \hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Introduced in v5.2 (July 2019)}
+Trace only those system calls that returned with an error code: \\
+\textbf{-Z}, \textbf{-e status}=\textbf{failed}
+\end{block}
+
+\begin{block}{eu-elflint no-such-file1 no-such-file2}
+\scriptsize
+\begin{alltt}
+eu-elflint: cannot open input file: No such file or directory
+eu-elflint: cannot open input file: No such file or directory
+\end{alltt}
+\end{block}
+
+\begin{block}{strace -qq -Z -efile eu-elflint no-such-file1 no-such-file2}
+\scriptsize
+\begin{alltt}
+access("/etc/ld.so.preload", R_OK) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "no-such-file1", O_RDONLY) = -1 ENOENT (No such file or directory)
+eu-elflint: cannot open input file: No such file or directory
+openat(AT_FDCWD, "no-such-file2", O_RDONLY) = -1 ENOENT (No such file or directory)
+eu-elflint: cannot open input file: No such file or directory
+\end{alltt}
+\end{block}
+Fixed in elfutils-0.178.
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Seccomp-assisted system call filtering \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{Introduced in v5.3 (September 2019)}
+\scriptsize
+\begin{itemize}
+\item Automatically generates and attaches a BPF program to filter system calls
+\item Makes execution of untraced system calls two orders of magnitude faster
+\end{itemize}
+\end{block}
+
+\begin{block}{The infamous dd example}
+\scriptsize
+\begin{alltt}
+\$ dd if=/dev/zero of=/dev/null bs=1 count=1M 2>\&1 | grep -v records
+1048576 bytes (1.0 MB, 1.0 MiB) copied, \textcolor{darkred}{0.668768} s, 1.6 MB/s
+
+\$ strace \textcolor{darkgreen}{-{}-seccomp-bpf} -f -qq -e signal=none -e trace=fchdir {\textbackslash}
+  dd if=/dev/zero of=/dev/null bs=1 count=1M 2>\&1 | grep -v records
+1048576 bytes (1.0 MB, 1.0 MiB) copied, \textcolor{darkred}{0.736511} s, 1.4 MB/s
+
+\$ strace -f -qq -e signal=none -e trace=fchdir {\textbackslash}
+  dd if=/dev/zero of=/dev/null bs=1 count=1M 2>\&1 | grep -v records
+1048576 bytes (1.0 MB, 1.0 MiB) copied, \textcolor{darkred}{28.0445} s, 37.4 kB/s
+\end{alltt}
+\end{block}
+
+\begin{block}{Comparative slowdown}
+$0.736511 / 0.668768 \approx \textcolor{darkred}{1.10}$,
+$28.0445 / 0.736511 \approx \textcolor{darkred}{38}$,
+$28.0445 / 0.668768 \approx \textcolor{darkred}{42}$
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Long options \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{1991 \ldots 2019: short options only}
+a:Ab:cCdDe:E:fFhiI:ko:O:p:P:qrs:S:tTu:vVwxX:yzZ
+\end{block}
+\begin{block}{Introduced in v5.3 (September 2019)}
+\begin{itemize}
+	\item \texttt{-{}-help}: alias to \texttt{-h}
+	\item \texttt{-{}-version}: alias to \texttt{-V}
+	\item \texttt{-{}-seccomp-bpf}: seccomp-assisted system call filtering
+\end{itemize}
+\end{block}
+\begin{block}{Introduced in v5.5 (February 2020)}
+\begin{itemize}
+	\item \texttt{-{}-debug}: alias to \texttt{-d}
+	\item \ldots
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Stack of function calls: \textbf{-k} option \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large strace -qq -P /dev/full cat /dev/null > /dev/full}
+\scriptsize
+\begin{alltt}
+fstat(1, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 7), ...}) = 0
+close(1)                                = 0
+\end{alltt}
+\end{block}
+
+\begin{block}{\large strace \textbf{-k} -qq -P /dev/full cat /dev/null > /dev/full}
+\scriptsize
+\begin{alltt}
+fstat(1, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 7), ...}) = 0
+ > /lib64/libc-2.27.so(__fxstat64+0x13) [0xe79c3]
+ > /bin/cat(main+0x1b3) [0x4017e3]
+ > /lib64/libc-2.27.so(__libc_start_main+0xe6) [0x21bd6]
+ > /bin/cat(_start+0x29) [0x402179]
+close(1)                                = 0
+ > /lib64/libc-2.27.so(__close_nocancel+0x7) [0xe8b47]
+ > /lib64/libc-2.27.so(_IO_file_close_it@@GLIBC_2.2.5+0x67) [0x79fd7]
+ > /lib64/libc-2.27.so(fclose@@GLIBC_2.2.5+0x136) [0x6d376]
+ > /bin/cat(close_stream+0x19) [0x404ce9]
+ > /bin/cat(close_stdout+0x11) [0x402691]
+ > /lib64/libc-2.27.so(__run_exit_handlers+0x170) [0x379c0]
+ > /lib64/libc-2.27.so(exit+0x19) [0x37ab9]
+ > /lib64/libc-2.27.so(__libc_start_main+0xed) [0x21bdd]
+ > /bin/cat(_start+0x29) [0x402179]
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Running as a detached grandchild: \textbf{-D} option \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large foreground strace}
+\begin{alltt}
+$ echo $$ && strace -e none sh -c 'echo $PPID'
+1234
+23456
++++ exited with 0 +++
+$ echo $$ && strace -e none sh -c 'echo $PPID'
+1234
+23459
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+
+\begin{block}{\large background strace}
+\begin{alltt}
+$ echo $$ && strace \textcolor{darkred}{-D} -e none sh -c 'echo $PPID'
+1234
+1234
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Format of named constants and flags: \textbf{-X} option \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large strace -e /open cat /dev/null}
+\scriptsize
+\begin{alltt}
+openat(\textcolor{darkred}{AT_FDCWD}, "/etc/ld.so.cache", \textcolor{darkred}{O_RDONLY|O_CLOEXEC}) = 3
+openat(\textcolor{darkred}{AT_FDCWD}, "/lib64/libc.so.6", \textcolor{darkred}{O_RDONLY|O_CLOEXEC}) = 3
+openat(\textcolor{darkred}{AT_FDCWD}, "/dev/null", \textcolor{darkred}{O_RDONLY}) = 3
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+
+\begin{block}{\large strace \textbf{-X verbose} -e /open cat /dev/null}
+\scriptsize
+\begin{alltt}
+openat(\textcolor{darkred}{-100 /* AT_FDCWD */}, "/etc/ld.so.cache",
+       \textcolor{darkred}{0x80000 /* O_RDONLY|O_CLOEXEC */}) = 3
+openat(\textcolor{darkred}{-100 /* AT_FDCWD */}, "/lib64/libc.so.6",
+       \textcolor{darkred}{0x80000 /* O_RDONLY|O_CLOEXEC */}) = 3
+openat(\textcolor{darkred}{-100 /* AT_FDCWD */}, "/dev/null", \textcolor{darkred}{0 /* O_RDONLY */}) = 3
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+
+\begin{block}{\large strace \textbf{-X raw} -e /open cat /dev/null}
+\scriptsize
+\begin{alltt}
+openat(\textcolor{darkred}{-100}, "/etc/ld.so.cache", \textcolor{darkred}{0x80000}) = 3
+openat(\textcolor{darkred}{-100}, "/lib64/libc.so.6", \textcolor{darkred}{0x80000}) = 3
+openat(\textcolor{darkred}{-100}, "/dev/null", \textcolor{darkred}{0})            = 3
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{New system calls \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\Large Introduced in v5.3 (September 2019)}
+pidfd\_open, clone3
+\end{block}
+
+\begin{block}{\Large Introduced in v5.2 (July 2019)}
+open\_tree, move\_mount, fsopen, fsconfig, fsmount, fspick
+\end{block}
+
+\begin{block}{\Large Introduced in v5.1 (May 2019)}
+clock\_gettime64,
+clock\_settime64,
+clock\_adjtime64,
+clock\_getres\_time64,
+clock\_nanosleep\_time64,
+timer\_gettime64,
+timer\_settime64,
+timerfd\_gettime64,
+timerfd\_settime64,
+utimensat\_time64,
+pselect6\_time64,
+ppoll\_time64,
+io\_pgetevents\_time64,
+recvmmsg\_time64,
+mq\_timedsend\_time64,
+mq\_timedreceive\_time64,
+semtimedop\_time64,
+rt\_sigtimedwait\_time64,
+futex\_time64,
+sched\_rr\_get\_interval\_time64,
+pidfd\_send\_signal,
+io\_uring\_setup,
+io\_uring\_enter,
+io\_uring\_register
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Netlink socket parsers \hfill [\insertframenumber/\inserttotalframenumber]}
+\tiny
+\begin{block}{\large Currently supported netlink protocols}
+\begin{itemize}
+\item NETLINK\_AUDIT
+\item NETLINK\_CRYPTO
+\item NETLINK\_KOBJECT\_UEVENT
+\item NETLINK\_NETFILTER
+\item NETLINK\_ROUTE
+\item NETLINK\_SELINUX
+\item NETLINK\_SOCK\_DIAG
+\item NETLINK\_XFRM
+\item NETLINK\_GENERIC
+\end{itemize}
+\end{block}
+
+\begin{block}{\large NETLINK\_ROUTE: ip route list table all}
+\begin{alltt}
+broadcast 127.0.0.0 dev lo table local proto kernel scope link src 127.0.0.1
+
+local 127.0.0.0/8 dev lo table local proto kernel scope host src 127.0.0.1
+
+local 127.0.0.1 dev lo table local proto kernel scope host src 127.0.0.1
+
+broadcast 127.255.255.255 dev lo table local proto kernel scope link src 127.0.0.1
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Netlink socket parsers: NETLINK\_ROUTE \hfill [\insertframenumber/\inserttotalframenumber]}
+\tiny
+\begin{block}{\large strace -e trace=sendto,recvmsg ip route list}
+\begin{alltt}
+sendto(3, \{\{len=40, type=RTM\_GETROUTE, flags=NLM\_F\_REQUEST|NLM\_F\_DUMP, seq=1357924680, pid=0\},
+ \textcolor{blue}{\{rtm\_family=AF\_UNSPEC, rtm\_dst\_len=0, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_UNSPEC, rtm\_protocol=RTPROT\_UNSPEC, rtm\_scope=RT\_SCOPE\_UNIVERSE, rtm\_type=RTN\_UNSPEC, rtm\_flags=0\}},
+  \textcolor{darkred}{\{nla\_len=0, nla\_type=RTA\_UNSPEC\}}\}, 40, 0, NULL, 0) = 40
+
+\smallskip
+recvmsg(3, \{msg\_name=\{sa\_family=AF\_NETLINK, nl\_pid=0, nl\_groups=00000000\}, msg\_namelen=12, msg\_iov=[\{iov\_base=[
+\textcolor{darkgreen}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_LINK, rtm\_type=RTN\_BROADCAST, rtm\_flags=0\}},
+  \textcolor{darkred}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, inet\_addr("127.0.0.0")\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, inet\_addr("127.0.0.1")\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}},
+\textcolor{darkgreen}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=8, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_HOST, rtm\_type=RTN\_LOCAL, rtm\_flags=0\}},
+  \textcolor{darkred}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, inet\_addr("127.0.0.0")\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, inet\_addr("127.0.0.1")\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}},
+\textcolor{darkgreen}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_HOST, rtm\_type=RTN\_LOCAL, rtm\_flags=0\}},
+  \textcolor{darkred}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, inet\_addr("127.0.0.1")\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, inet\_addr("127.0.0.1")\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}},
+\textcolor{darkgreen}{\{\{len=60, type=RTM\_NEWROUTE, flags=NLM\_F\_MULTI, seq=1357924680, pid=12345\},
+ \textcolor{blue}{\{rtm\_family=AF\_INET, rtm\_dst\_len=32, rtm\_src\_len=0, rtm\_tos=0, rtm\_table=RT\_TABLE\_LOCAL, rtm\_protocol=RTPROT\_KERNEL, rtm\_scope=RT\_SCOPE\_LINK, rtm\_type=RTN\_BROADCAST, rtm\_flags=0\}},
+  \textcolor{darkred}{[\{\{nla\_len=8, nla\_type=RTA\_TABLE\}, RT\_TABLE\_LOCAL\}, \{\{nla\_len=8, nla\_type=RTA\_DST\}, inet\_addr("127.255.255.255")\}, \{\{nla\_len=8, nla\_type=RTA\_PREFSRC\}, inet\_addr("127.0.0.1")\}, \{\{nla\_len=8, nla\_type=RTA\_OIF\}, if\_nametoindex("lo")\}]}\}}
+], iov\_len=32768\}], msg\_iovlen=1, msg\_controllen=0, msg\_flags=0\}, 0) = 240 \\
+\ldots
+\end{alltt}
+\end{block}
+\end{frame}
+%%%%%%%
+\begin{frame}{Copyleft license \hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{\Large 1991 \ldots 2018: permissive license}
+strace was released under a Berkeley-style license \\ at the request of Paul Kranenburg.
+\end{block}
+\begin{block}{\Large Since v4.26$\sim$52 (December 2018): copyleft license}
+\begin{itemize}
+	\item test suite: GNU General Public License v2+
+	\item the rest of strace: GNU Lesser General Public License v2.1+
+\end{itemize}
+\end{block}
+The first major strace feature implemented after this change is PTRACE\_GET\_SYSCALL\_INFO API support.
+\end{frame}
+
+%%%%%%%
+{
+\setbeamertemplate{footline}{}
+\begin{frame}[noframenumbering]{Questions?}
+	\begin{columns}
+		\column{7cm}
+\begin{block}{\large homepage}
+	https://strace.io
+\end{block}
+\begin{block}{\large strace.git, strace-talks.git}
+	https://github.com/strace/strace.git
+
+	https://gitlab.com/strace/strace.git
+
+\smallskip
+
+	https://github.com/strace/strace-talks.git
+
+	https://gitlab.com/strace/strace-talks.git
+\end{block}
+\begin{block}{\large mailing list}
+	strace-devel@lists.strace.io
+\end{block}
+\begin{block}{\large IRC channel}
+	\#strace@freenode
+\end{block}
+		\column{3cm}
+			\centerline{\pgfuseimage{strace-logo}}
+	\end{columns}
+\end{frame}
+}
+
+\end{document}
