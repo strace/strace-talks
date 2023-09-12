@@ -248,6 +248,86 @@ Date:   Tue Apr 25 17:32:11 2023 +0200
 \end{frame}
 
 %%%%%%%
+\begin{frame}[fragile]{\texttt{ioctl} parsers \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large Currently supported \texttt{ioctl(2)} command classes}
+\begin{columns}
+	\column{6cm}
+		\begin{itemize}
+			\item BLK*
+			\item COUNTER\_*
+			\item DM\_*
+			\item EV* (evdev)
+			\item GPIO\_*
+			\item HDIO\_*
+			\item KD*
+			\item LIRC\_*
+			\item LOOP\_*
+			\item MEM* (MTD)
+			\item NBD\_*
+			\item NS\_*
+		\end{itemize}
+	\column{6cm}
+		\begin{itemize}
+			\item PERF\_EVENT\_IOC\_*
+			\item PTP\_*
+			\item RANDOM\_*
+			\item RTC\_*
+			\item SECCOMP\_*
+			\item SIOC\_*
+			\item SG\_*
+			\item TEE\_*
+			\item UBI\_*
+			\item UFFDIO\_*
+			\item VIDIOC\_*
+			\item WDIOC\_*
+		\end{itemize}
+\end{columns}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{\texttt{ioctl} parsers \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\scriptsize strace -v -{}-trace=ioctl dmsetup ls}
+\scriptsize
+\begin{alltt}
+ioctl(3, DM_VERSION, \{version=4.0.0, data_size=16384, flags=DM_EXISTS_FLAG\}
+\symlinecont => \{version=4.43.0, data_size=16384, flags=DM_EXISTS_FLAG\}) = 0
+ioctl(3, DM_LIST_DEVICES, \{version=4.0.0, data_size=16384, data_start=312,
+\symlinecont flags=DM_EXISTS_FLAG\} => \{version=4.43.0, data_size=472, data_start=312,
+\symlinecont flags=DM_EXISTS_FLAG, \{dev=makedev(0xfe, 0), name="nvme0n1p3_crypt", event_nr=0\},
+\symlinecont \{dev=makedev(0xfe, 0x3), name="nurgle--vg-home", event_nr=0\},
+\symlinecont \{dev=makedev(0xfe, 0x1), name="nurgle--vg-root", event_nr=0\},
+\symlinecont \{dev=makedev(0xfe, 0x2), name="nurgle--vg-swap_1"\}\}) = 0
+\end{alltt}
+\end{block}
+\begin{block}{\scriptsize\url{https://git.kernel.org/pub/scm/linux/kernel/git/legion/kbd.git/commit/?id=1002d3b56b72}}
+\scriptsize
+\begin{alltt}
+Author: Alexey Gladkov <gladkov.alexey@gmail.com>
+Date:   Tue Apr 25 17:32:11 2023 +0200
+\end{alltt}
+\vspace{-3ex}
+\begin{alltt}
+    tests: Use strace to track syscalls
+\end{alltt}
+\vspace{-3ex}
+\begin{alltt}
+    Now strace is powerful enough to show ioctls specific to console
+    configuration. Additional benefit of using strace is that we can
+    enable end-to-end tests for statically linked utilities.
+\end{alltt}
+\vspace{-3ex}
+\begin{alltt}
+    Signed-off-by: Alexey Gladkov <gladkov.alexey@gmail.com>
+\end{alltt}
+\vspace{-3ex}
+\begin{alltt}
+ 37 files changed, 15955 insertions(+), 105164 deletions(-)
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
 \begin{frame}[fragile]{Netlink socket parsers \hfill [\insertframenumber/\inserttotalframenumber]}
 \scriptsize
 \begin{block}{\large Currently supported netlink protocols}
