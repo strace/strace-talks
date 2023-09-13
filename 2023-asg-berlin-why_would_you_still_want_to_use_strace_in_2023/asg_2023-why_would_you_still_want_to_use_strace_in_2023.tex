@@ -167,68 +167,6 @@ Being an optimization, \textbf{-{}-seccomp-bpf} is automatically turned off when
 \end{frame}
 
 %%%%%%%
-\begin{frame}[fragile]{Stack of function calls: \textbf{-k} option \hfill [\insertframenumber/\inserttotalframenumber]}
-\begin{block}{\large \textbf{-k} is an alias for \textbf{-{}-stack-traces}}
-Print the execution stack trace of the traced processes after each traced syscall or signal
-\end{block}
-\begin{block}{\large strace \textbf{-k} -qq -P /dev/full cat < /dev/null > /dev/full}
-\scriptsize
-\begin{alltt}
-newfstatat(1, "", \{st_mode=S_IFCHR|0666, st_rdev=makedev(0x1, 0x7), ...\}, AT_EMPTY_PATH) = 0
- > /lib64/libc.so.6(fstatat64+0xa) [0xfbdda]
- > /bin/cat(main+0x217) [0x2597]
- > /lib64/libc.so.6(__libc_start_call_main+0x7b) [0x27c8b]
- > /lib64/libc.so.6(__libc_start_main@@GLIBC_2.34+0x84) [0x27d44]
- > /bin/cat(_start+0x20) [0x3620]
-close(1)                                = 0
- > /lib64/libc.so.6(__close_nocancel+0x7) [0x100647]
- > /lib64/libc.so.6(_IO_file_close_it@@GLIBC_2.2.5+0x62) [0x81842]
- > /lib64/libc.so.6(fclose@@GLIBC_2.2.5+0x102) [0x75b92]
- > /bin/cat(close_stream+0x1b) [0x3b4b]
- > /bin/cat(close_stdout+0xf) [0x5c1f]
- > /lib64/libc.so.6(__run_exit_handlers+0x155) [0x3fec5]
- > /lib64/libc.so.6(exit+0x1b) [0x3fffb]
- > /lib64/libc.so.6(__libc_start_call_main+0x82) [0x27c92]
- > /lib64/libc.so.6(__libc_start_main@@GLIBC_2.34+0x84) [0x27d44]
- > /bin/cat(_start+0x20) [0x3620]
-\end{alltt}
-\end{block}
-\end{frame}
-
-%%%%%%%
-\begin{frame}[fragile]{Stack of function calls: \textbf{-k} option \hfill [\insertframenumber/\inserttotalframenumber]}
-\begin{block}{strace -qq -{}-trace=none timeout 1 sleep 2}
-\scriptsize
-\begin{alltt}
---- SIGALRM \{si_signo=SIGALRM, si_code=SI_TIMER, si_timerid=0, si_overrun=0, si_int=0, si_ptr=NULL\} ---
---- SIGTERM \{si_signo=SIGTERM, si_code=SI_USER, si_pid=1234567, si_uid=1000\} ---
---- SIGCHLD \{si_signo=SIGCHLD, si_code=CLD_KILLED, si_pid=1234568, si_uid=1000, si_status=SIGTERM, si_utime=0, si_stime=0\} ---
---- SIGCONT \{si_signo=SIGCONT, si_code=SI_USER, si_pid=1234567, si_uid=1000\} ---
-\end{alltt}
-\end{block}
-\begin{block}{strace \textbf{-k} -qq -{}-trace=none -{}-signal=alrm,term timeout 1 sleep 2}
-\scriptsize
-\begin{alltt}
---- SIGALRM \{si_signo=SIGALRM, si_code=SI_TIMER, si_timerid=0, si_overrun=0, si_int=0, si_ptr=NULL\} ---
- > /lib64/libc.so.6(__sigsuspend+0x15) [0x3dca5]
- > /usr/bin/timeout(main+0x663) [0x2ae3]
- > /lib64/libc.so.6(__libc_start_call_main+0x7b) [0x27c8b]
- > /lib64/libc.so.6(__libc_start_main@@GLIBC_2.34+0x84) [0x27d44]
- > /usr/bin/timeout(_start+0x20) [0x2d40]
---- SIGTERM \{si_signo=SIGTERM, si_code=SI_USER, si_pid=1234567, si_uid=1000\} ---
- > /lib64/libc.so.6(kill+0x7) [0x3dc37]
- > /usr/bin/timeout(cleanup+0x15c) [0x5bcc]
- > /lib64/libc.so.6(__restore_rt+0x0) [0x3da20]
- > /lib64/libc.so.6(__sigsuspend+0x15) [0x3dca5]
- > /usr/bin/timeout(main+0x663) [0x2ae3]
- > /lib64/libc.so.6(__libc_start_call_main+0x7b) [0x27c8b]
- > /lib64/libc.so.6(__libc_start_main@@GLIBC_2.34+0x84) [0x27d44]
- > /usr/bin/timeout(_start+0x20) [0x2d40]
-\end{alltt}
-\end{block}
-\end{frame}
-
-%%%%%%%
 \begin{frame}[fragile]{\texttt{ioctl} parsers \hfill [\insertframenumber/\inserttotalframenumber]}
 \begin{block}{\large Currently supported \texttt{ioctl(2)} command classes}
 \begin{columns}
@@ -366,6 +304,68 @@ recvmsg(3, \{msg_name=\{sa_family=AF_NETLINK, nl_pid=0, nl_groups=00000000\}, ms
 \symlinecont iov_len=32768\}], msg_iovlen=1, msg_controllen=0, msg_flags=0\}, 0) = 180
 
 \ldots
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Stack of function calls: \textbf{-k} option \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\large \textbf{-k} is an alias for \textbf{-{}-stack-traces}}
+Print the execution stack trace of the traced processes after each traced syscall or signal
+\end{block}
+\begin{block}{\large strace \textbf{-k} -qq -P /dev/full cat < /dev/null > /dev/full}
+\scriptsize
+\begin{alltt}
+newfstatat(1, "", \{st_mode=S_IFCHR|0666, st_rdev=makedev(0x1, 0x7), ...\}, AT_EMPTY_PATH) = 0
+ > /lib64/libc.so.6(fstatat64+0xa) [0xfbdda]
+ > /bin/cat(main+0x217) [0x2597]
+ > /lib64/libc.so.6(__libc_start_call_main+0x7b) [0x27c8b]
+ > /lib64/libc.so.6(__libc_start_main@@GLIBC_2.34+0x84) [0x27d44]
+ > /bin/cat(_start+0x20) [0x3620]
+close(1)                                = 0
+ > /lib64/libc.so.6(__close_nocancel+0x7) [0x100647]
+ > /lib64/libc.so.6(_IO_file_close_it@@GLIBC_2.2.5+0x62) [0x81842]
+ > /lib64/libc.so.6(fclose@@GLIBC_2.2.5+0x102) [0x75b92]
+ > /bin/cat(close_stream+0x1b) [0x3b4b]
+ > /bin/cat(close_stdout+0xf) [0x5c1f]
+ > /lib64/libc.so.6(__run_exit_handlers+0x155) [0x3fec5]
+ > /lib64/libc.so.6(exit+0x1b) [0x3fffb]
+ > /lib64/libc.so.6(__libc_start_call_main+0x82) [0x27c92]
+ > /lib64/libc.so.6(__libc_start_main@@GLIBC_2.34+0x84) [0x27d44]
+ > /bin/cat(_start+0x20) [0x3620]
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Stack of function calls: \textbf{-k} option \hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{strace -qq -{}-trace=none timeout 1 sleep 2}
+\scriptsize
+\begin{alltt}
+--- SIGALRM \{si_signo=SIGALRM, si_code=SI_TIMER, si_timerid=0, si_overrun=0, si_int=0, si_ptr=NULL\} ---
+--- SIGTERM \{si_signo=SIGTERM, si_code=SI_USER, si_pid=1234567, si_uid=1000\} ---
+--- SIGCHLD \{si_signo=SIGCHLD, si_code=CLD_KILLED, si_pid=1234568, si_uid=1000, si_status=SIGTERM, si_utime=0, si_stime=0\} ---
+--- SIGCONT \{si_signo=SIGCONT, si_code=SI_USER, si_pid=1234567, si_uid=1000\} ---
+\end{alltt}
+\end{block}
+\begin{block}{strace \textbf{-k} -qq -{}-trace=none -{}-signal=alrm,term timeout 1 sleep 2}
+\scriptsize
+\begin{alltt}
+--- SIGALRM \{si_signo=SIGALRM, si_code=SI_TIMER, si_timerid=0, si_overrun=0, si_int=0, si_ptr=NULL\} ---
+ > /lib64/libc.so.6(__sigsuspend+0x15) [0x3dca5]
+ > /usr/bin/timeout(main+0x663) [0x2ae3]
+ > /lib64/libc.so.6(__libc_start_call_main+0x7b) [0x27c8b]
+ > /lib64/libc.so.6(__libc_start_main@@GLIBC_2.34+0x84) [0x27d44]
+ > /usr/bin/timeout(_start+0x20) [0x2d40]
+--- SIGTERM \{si_signo=SIGTERM, si_code=SI_USER, si_pid=1234567, si_uid=1000\} ---
+ > /lib64/libc.so.6(kill+0x7) [0x3dc37]
+ > /usr/bin/timeout(cleanup+0x15c) [0x5bcc]
+ > /lib64/libc.so.6(__restore_rt+0x0) [0x3da20]
+ > /lib64/libc.so.6(__sigsuspend+0x15) [0x3dca5]
+ > /usr/bin/timeout(main+0x663) [0x2ae3]
+ > /lib64/libc.so.6(__libc_start_call_main+0x7b) [0x27c8b]
+ > /lib64/libc.so.6(__libc_start_main@@GLIBC_2.34+0x84) [0x27d44]
+ > /usr/bin/timeout(_start+0x20) [0x2d40]
 \end{alltt}
 \end{block}
 \end{frame}
