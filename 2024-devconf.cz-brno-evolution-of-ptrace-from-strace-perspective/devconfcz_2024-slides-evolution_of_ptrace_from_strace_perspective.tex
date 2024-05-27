@@ -1,0 +1,948 @@
+% Copyright (C) 2012-2024 Dmitry V. Levin <ldv@strace.io>
+% Permission is granted to copy, distribute and/or modify this document
+% under the terms of the GNU Free Documentation License, Version 1.2
+% or any later version published by the Free Software Foundation;
+% with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+\documentclass[unicode,aspectratio=169,xcolor={table,dvipsnames,usernames}]{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[english]{babel}
+\usepackage{alltt}
+
+\colorlet{darkred}{BrickRed}
+\colorlet{darkgreen}{OliveGreen}
+\newcommand{\symlinebreak}{\textcolor{blue}{\(\hookleftarrow\)}}
+\newcommand{\symlinecont}{\textcolor{blue}{\(\longrightarrow\)}}
+
+\pgfdeclareimage[height=0.6cm]{left-corner-logo}{devconf-cz-icon.pdf}
+\pgfdeclareimage[height=1.2cm]{right-corner-logo}{strace-straus.pdf}
+\pgfdeclareimage[height=2cm]{title-logo}{devconf-cz.pdf}
+\pgfdeclareimage[height=8cm]{strace-logo}{strace-straus.pdf}
+\pgfdeclareimage[height=5.8cm]{wat}{wat.pdf}
+
+\usetheme{Warsaw}
+\setbeamertemplate{headline}{}
+\setbeamertemplate{footline}{\pgfuseimage{left-corner-logo} \hfill \pgfuseimage{right-corner-logo}}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{logo}{}
+\setbeamercovered{transparent}
+
+\title{\Huge Evolution of ptrace \\ from strace's perspective}
+\author{\LARGE Dmitry~Levin}
+\date{\Large Brno, 2024}
+\titlegraphic{\pgfuseimage{title-logo}}
+
+\begin{document}
+
+%%%%%%%
+\begin{frame}[noframenumbering]
+\titlepage
+\end{frame}
+
+%%%%%%%
+{
+\setbeamertemplate{footline}{\pgfuseimage{left-corner-logo}}
+\begin{frame}{\Large strace's perspective\hfill [\insertframenumber/\inserttotalframenumber]}
+	\begin{columns}
+		\column{10cm}
+\begin{block}{What is strace?}
+\begin{itemize}
+	\item diagnostic, debugging and instructional utility
+	\item monitors and tampers with syscalls and signals
+	\item unprivileged, userspace
+	\item uses ptrace API
+	\item the only general purpose tracer of its kind
+\end{itemize}
+\end{block}
+
+\begin{block}{The best syscall decoder in town}
+\begin{itemize}
+	\item can access tracee memory, filesystem, etc.
+	\item can perform complex manipulations with the data
+	\item can obtain a lot of associated information
+	\item can tamper with syscall numbers and their return values
+	\item can inject data both on entering and on exiting syscalls
+\end{itemize}
+\end{block}
+		\column{2cm}
+			\centerline{\pgfuseimage{strace-logo}}
+	\end{columns}
+\end{frame}
+}
+
+%%%%%%%
+\begin{frame}{\Large strace's perspective\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Scope of this talk}
+\begin{itemize}
+	\item architecture of a ptrace based tracer
+	\item evolution of the ptrace API
+	\item what is still broken in the kernel
+	\item what is still missing in the kernel
+	\item what could be done to address this
+\end{itemize}
+\end{block}
+
+\begin{block}{You'll see why}
+\begin{itemize}
+	\item writing a basic system call tracer is relatively easy
+	\item a decent syscall tracer is necessarily complicated
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Architecture of a ptrace based tracer: overview\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{What is the ptrace API for?}
+A means by which one process may
+\begin{itemize}
+	\item observe and control the execution of another process
+	\item examine and change the tracee's registers and memory
+\end{itemize}
+\end{block}
+
+\begin{block}{tracer architecture summary}
+\begin{itemize}
+	\item a tracee needs to be attached to the tracer
+	\item the tracer enters event loop
+	\item when the tracer is finished tracing, it can cause the tracee
+		to continue executing in a regular, non-traced mode
+\end{itemize}
+\end{block}
+
+So far everything looks straightforward, doesn't it?
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Architecture of a ptrace based tracer: event loop\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Tracer event loop}
+\begin{itemize}
+	\item the tracee stops each time a traceable event happens, \\
+		these events are called ptrace stops
+	\item the tracer is notified using a "wait" family syscall, \\
+		e.g. \textbf{waitpid(-1, \&status, \_\_WALL)}
+	\item that call returns a status value containing information \\
+		that indicates the cause of the stop
+	\item while the tracee is stopped, the tracer can use \\
+		various ptrace commands to inspect and modify the tracee
+	\item the tracer then causes the tracee to continue
+\end{itemize}
+\end{block}
+
+There is nothing scary so far, isn't it?
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{\Large Attaching tracees\hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Traditional approach}
+\begin{itemize}
+	\item attaching a process that already exists: \\
+		\textbf{ptrace(PTRACE\_ATTACH, pid, 0, 0)}
+	\item successful \textbf{PTRACE\_ATTACH} sends \textbf{SIGSTOP} to the tracee
+	\item attaching a process that has to be created first:
+	\begin{alltt}\bf
+		pid = fork();
+		if (pid == 0) \{
+		    ptrace(PTRACE_TRACEME, 0, 0, 0);
+		    raise(SIGSTOP);
+		    \ldots
+		\}
+	\end{alltt}
+	\item set options for the new tracee during the first stop: \\
+		\textbf{ptrace(PTRACE\_SETOPTIONS, pid, 0, \textit{PTRACE\_O\_flags})}
+	\item the first \textbf{SIGSTOP} is suppressed by the tracer
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{\Large Attaching tracees\hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Modern approach (since Linux 3.4 released $\approx$ 12 years ago)}
+\begin{itemize}
+	\item attaching a process that already exists: \\
+		\textbf{ptrace(PTRACE\_SEIZE, pid, 0, PTRACE\_O\_flags)}
+	\item PTRACE\_SEIZE does not stop the new tracee, there is a separate \\
+		\textbf{ptrace(PTRACE\_INTERRUPT, pid, 0, 0)} \\
+		command to stop it without interfering with signals
+	\item attaching a process that has to be created first:
+	\begin{alltt}\bf
+		pid = fork();
+		if (pid == 0) \{
+		    raise(SIGSTOP);
+		    \ldots
+		\}
+		waitpid(pid, &status, WSTOPPED);
+		ptrace(PTRACE_SEIZE, pid, 0, PTRACE_O_flags);
+	\end{alltt}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Types of ptrace stops\hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{itemize}
+	\item any stopped state in which the tracee is ready to accept ptrace commands
+	\item every time the tracee enters a ptrace stop state, the tracer is notified
+\end{itemize}
+\Large
+\begin{block}{Signal delivery stops}
+	Just prior to signal delivery
+\end{block}
+\begin{block}{Syscall stops}
+	Just prior to entering and exiting a system call
+\end{block}
+\begin{block}{Group stops}
+	When a tracee receives a stopping signal
+\end{block}
+\begin{block}{PTRACE\_EVENT\_* stops}
+	Depending on PTRACE\_O\_* options set
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Signal delivery stops\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Conditions}
+\begin{itemize}
+	\item each time a signal is about to be delivered
+	\item even if the signal is being ignored
+	\item except \textbf{SIGKILL} which causes no signal delivery stop
+	\item the signal is not yet delivered to the tracee
+	\item reported by "wait" family syscalls with \\
+		$WIFSTOPPED(status)\ \&\&\ WSTOPSIG(status) == sig$
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Signal delivery stops\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Actions}
+\begin{itemize}
+	\item the corresponding siginfo structure can be retrieved using \\
+		\textbf{ptrace(PTRACE\_GETSIGINFO, pid, 0, \&siginfo)} \\
+		and modified using \\
+		\textbf{ptrace(PTRACE\_SETSIGINFO, pid, 0, \&siginfo)}
+	\item the tracer restarts the tracee with \\
+		\textbf{ptrace(\textit{PTRACE\_restart}, pid, 0, sig)} \\
+	where \textit{PTRACE\_restart} is one of ptrace restart operations
+	\item if $sig == 0$, then the signal is not delivered
+	\item otherwise, signal $sig$ is injected
+	\item injected signal $sig$ can differ from $WSTOPSIG(status)$
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Syscall stops\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Conditions}
+\begin{itemize}
+	\item when the tracee is restarted from a ptrace stop using \\
+		\textbf{ptrace(PTRACE\_SYSCALL, pid, 0, sig)}
+	\item it will stop just prior to entering the next system call
+	\item and just prior to exiting the current system call
+	\item reported by "wait" family syscalls with either \\
+		$WSTOPSIG(status) == SIGTRAP$, or, \\
+		if \textbf{PTRACE\_O\_TRACESYSGOOD} option was set, \\
+		$WSTOPSIG(status) == (SIGTRAP | 0x80)$
+	\item makes it easy to distinguish signal and syscall stops
+	\item PTRACE\_O\_TRACESYSGOOD is available since Linux 2.4.6
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Syscall stops\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Syscall and signal stops}
+\begin{itemize}
+	\item signal stop never happens between syscall enter and exit stops
+	\item when syscall is interrupted by signal, the signal delivery stop happens after the syscall exit stop
+\end{itemize}
+\end{block}
+
+\begin{block}{What can happen with a tracee between syscall enter and exit stops?}
+\begin{itemize}
+	\item stop in a \textbf{PTRACE\_EVENT\_*} stop
+	\item exit, if it entered \_exit or exit\_group syscall
+	\item be killed by \textbf{SIGKILL}
+	\item die silently, if it is a thread group leader, the execve happened
+		in another thread, and that thread is not traced by the same tracer
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{\Large Syscall enter and exit stops\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+How to distinguish syscall enter and exit stops?
+\begin{block}{Traditional approach}
+	Keep track of the sequence of ptrace stops
+\end{block}
+
+\begin{block}{Modern approach (since Linux 5.3 released $\approx$ 5 years ago)}
+	Use \textbf{PTRACE\_GET\_SYSCALL\_INFO}:
+	\begin{alltt}
+		struct ptrace_syscall_info psi;
+		ptrace(PTRACE_GET_SYSCALL_INFO, pid, sizeof(psi), &psi)
+	\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{\Large Syscall enter and exit stops\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{PTRACE\_GET\_SYSCALL\_INFO API}
+\begin{itemize}
+	\item \begin{alltt}
+	struct ptrace_syscall_info \{
+	  __u8 op;	\hfill /* Type of system call stop */
+	  \ldots
+	\}
+	\end{alltt}
+	\item $op == PTRACE\_SYSCALL\_INFO\_ENTRY$ means \\
+		it is a syscall enter stop
+	\item $op == PTRACE\_SYSCALL\_INFO\_EXIT$ means \\
+		it is a syscall exit stop
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Syscall stops: obtaining syscall information\hfill [\insertframenumber/\inserttotalframenumber]}
+How the tracer can inspect syscall number, arguments, and exit status?
+
+\begin{block}{The ancient method}
+\begin{itemize}
+	\item to inspect registers: \\
+		\textbf{ptrace(PTRACE\_PEEKUSER, pid, offset, 0)}
+	\item painfully slow: one word at a time
+\end{itemize}
+\end{block}
+
+\begin{block}{The very old method}
+\begin{itemize}
+	\item to fetch all registers in one go \\
+		\textbf{ptrace(PTRACE\_GETREGS, pid, 0, \&user\_regs\_struct)}
+	\item not available on modern architectures
+\end{itemize}
+\end{block}
+
+\begin{block}{The old method (since Linux 2.6.34 released $\approx$ 14 years ago)}
+\begin{itemize}
+	\item to fetch all registers in one go \\
+		\textbf{ptrace(PTRACE\_GETREGSET, pid, NT\_PRSTATUS, \&iovec)}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Syscall stops: obtaining syscall information\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Problems with the register fetching approach}
+\begin{itemize}
+	\item very architecture-dependent
+	\item unreliable at least on one popular 64-bit architecture
+\end{itemize}
+\end{block}
+
+\begin{block}{What's wrong there?}
+\begin{itemize}
+	\item process bitness does not have to match syscall bitness
+	\item 64-bit processes can invoke both 64-bit and 32-bit system calls
+	\item no reliable way to tell them apart by inspecting registers
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{\Large Syscall stops: obtaining syscall information\hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+Process bitness does not match syscall bitness
+\begin{block}{Example based on Debian bug report \#459820 submitted in 2008}
+\begin{alltt}
+#include <stdio.h>
+#include <unistd.h>
+int main() \{
+    setlinebuf(stdout);
+    puts("------------");
+    \textcolor{darkred}{__asm__("movl $2, %eax; int $0x80");}
+    printf("[I am %d]{\textbackslash}n", getpid());
+    return 0;
+\}
+\end{alltt}
+\end{block}
+
+\begin{block}{Regular invocation: ./debbug459820}
+\small
+\begin{alltt}
+------------
+[I am 23450]
+[I am 23451]
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{\Large Syscall stops: obtaining syscall information\hfill [\insertframenumber/\inserttotalframenumber]}
+Process bitness does not match syscall bitness
+\begin{columns}
+	\column{10cm}
+		\Large
+		\begin{block}{Invocation under strace, Linux < 5.3}
+\begin{alltt}
+$ strace -f ./debbug459820 > /dev/null
+\ldots
+write(1, "------------{\textbackslash}n", 13) = 13
+strace: Process 23451 attached
+\textcolor{darkred}{open(0x1, O_RDONLY|O_CREAT|O_TRUNC
+|O_DSYNC|O_DIRECT|O_NOATIME|O_CLOEXEC
+|O_PATH|O_TMPFILE|0x1000020, 0134300)
+= 23451}
+\ldots
+\end{alltt}
+		\end{block}
+	\column{3cm}
+		\begin{figure}
+			\centering
+			\pgfuseimage{wat}
+		\end{figure}
+\end{columns}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{\Large Syscall stops: obtaining syscall information\hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{PTRACE\_GET\_SYSCALL\_INFO (since Linux 5.3 released $\approx$ 5 years ago)}
+\scriptsize
+\begin{alltt}
+struct ptrace_syscall_info \{
+  __u8 op;			\hfill /* Type of system call stop */
+  __aligned_u32 arch;	\hfill /* AUDIT_ARCH_* value; see seccomp(2) */
+  __u64 instruction_pointer;	\hfill /* CPU instruction pointer */
+  __u64 stack_pointer;		\hfill /* CPU stack pointer */
+  union \{
+    struct \{			\hfill /* op == PTRACE_SYSCALL_INFO_ENTRY */
+      __u64 nr;			\hfill /* Syscall number */
+      __u64 args[6];		\hfill /* Syscall arguments */
+    \} entry;
+    struct \{			\hfill /* op == PTRACE_SYSCALL_INFO_EXIT */
+      __s64 rval;		\hfill /* Syscall return value */
+      __u8 is_error;		\hfill /* Does rval contain an error value? */
+    \} exit;
+    struct \{			\hfill /* op == PTRACE_SYSCALL_INFO_SECCOMP */
+      __u64 nr;			\hfill /* Syscall number */
+      __u64 args[6];		\hfill /* Syscall arguments */
+      __u32 ret_data;		\hfill /* SECCOMP_RET_DATA portion of SECCOMP_RET_TRACE */
+    \} seccomp;
+  \};
+\};
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Syscall stops: accessing tracee memory\hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+Inspecting and modifying the tracee memory
+\begin{block}{The old method}
+\begin{itemize}
+	\item to inspect memory: \\
+		\textbf{ptrace(PTRACE\_PEEKDATA, pid, addr, 0)}
+	\item to modify memory: \\
+		\textbf{ptrace(PTRACE\_POKEDATA, pid, addr, word)}
+	\item painfully slow: one word at a time
+\end{itemize}
+\end{block}
+
+\begin{block}{The modern method (since Linux 3.2 released $\approx$ 12 years ago)}
+\begin{itemize}
+	\item to inspect memory: \textbf{process\_vm\_readv}()
+	\item to modify memory: \textbf{process\_vm\_writev}()
+	\item allows tracers to read/write pages from/to tracee's memory
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Group stop\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Conditions}
+\begin{itemize}
+	\item a stopping signal causes a signal delivery stop
+	\item after it is injected by the tracer
+	\item the tracee enters a group stop state
+	\item reported by "wait" family syscalls with \\
+		$WSTOPSIG(status) == stopsig$
+	\item \textbf{ptrace(PTRACE\_GETSIGINFO, pid, 0, \&siginfo)} \\
+		can be used to tell it from a signal stop
+	\item when the tracee is attached using \textbf{PTRACE\_SEIZE}, then \\
+		$(status >> 16) == PTRACE\_EVENT\_STOP$, \\
+		and \textbf{PTRACE\_GETSIGINFO} is not needed
+\end{itemize}
+\end{block}
+\end{frame}
+%%%%%%%
+
+\begin{frame}{\Large Group stop\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Problem of transparent handling of stopping signals}
+\begin{itemize}
+	\item the tracee will not run until restarted by the tracer
+	\item the tracee will not send notifications, besides \textbf{SIGKILL} death
+	\item if restarted, the stopping signal is effectively ignored
+	\item if not restarted, future \textbf{SIGCONT} signals will not be reported \\
+		and would not have effect on the tracee
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Group stop\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Solution (since Linux 3.4 released $\approx$ 12 years ago)}
+\begin{itemize}
+	\item instead of \\
+		\textbf{ptrace(PTRACE\_SYSCALL, pid, 0, 0)}
+	\item restart the tracee in a way where it does not execute, \\
+		but waits for new events: \\
+		\textbf{ptrace(PTRACE\_LISTEN, pid, 0, 0)}
+	\item this method is available only if the tracee was attached \\
+		using \textbf{PTRACE\_SEIZE}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{\Large Seccomp-assisted tracing and syscall filtering\hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{\textbf{strace -{}-seccomp-bpf}}
+\small
+\begin{itemize}
+	\item automatically generates and attaches a BPF program to filter syscalls
+	\item makes execution of untraced syscalls two orders of magnitude faster
+\end{itemize}
+\end{block}
+
+\begin{block}{The infamous dd example}
+\scriptsize
+\begin{alltt}
+\$ dd if=/dev/zero of=/dev/null bs=1 count=1M 2>\&1 | grep -v records
+1048576 bytes (1.0 MB, 1.0 MiB) copied, \textcolor{darkred}{0.281794} s, 3.7 MB/s
+
+\$ strace -f -qq --signal=none --trace=fchdir \textbackslash
+  dd if=/dev/zero of=/dev/null bs=1 count=1M 2>\&1 | grep -v records
+1048576 bytes (1.0 MB, 1.0 MiB) copied, \textcolor{darkred}{13.9573} s, 75.1 kB/s
+
+\$ strace -f -qq --signal=none --trace=fchdir \textcolor{darkgreen}{--seccomp-bpf} \textbackslash
+  dd if=/dev/zero of=/dev/null bs=1 count=1M 2>\&1 | grep -v records
+1048576 bytes (1.0 MB, 1.0 MiB) copied, \textcolor{darkred}{0.307412} s, 3.4 MB/s
+\end{alltt}
+\end{block}
+
+\begin{block}{Comparative slowdown}
+$0.307412 / 0.281794 \approx \textcolor{darkred}{1.09}$ \hfill
+$13.9573 / 0.307412 \approx \textcolor{darkred}{45.4}$ \hfill
+$13.9573 / 0.281794 \approx \textcolor{darkred}{49.5}$
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large PTRACE\_EVENT\_SECCOMP\hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{Conditions}
+\begin{itemize}
+	\item \textbf{PTRACE\_O\_TRACESECCOMP} option is set
+	\item \textbf{PTRACE\_EVENT\_SECCOMP} stop occurs whenever \\
+		a SECCOMP\_RET\_TRACE rule of a seccomp filter is triggered
+	\item independent of the method that was used to restart the tracee
+	\item available since Linux 3.5 released $\approx$ 12 years ago, but
+	\item starting with Linux 4.8 released $\approx$ 8 years ago, \\
+	       this event occurs between syscall enter and exit stops
+\end{itemize}
+\end{block}
+
+\begin{block}{Actions}
+\begin{itemize}
+	\item similar to syscall enter stops
+	\item \textbf{PTRACE\_CONT} is used instead of \textbf{PTRACE\_SYSCALL} \\
+		on exiting syscall
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Following forks\hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{The stone age (before Linux 2.5.46)}
+\begin{itemize}
+	\item quite a bit of work to follow clones, forks, and vforks
+	\item new process had to be created using clone() syscall \\
+		with \textbf{CLONE\_PTRACE} flag set
+	\item on entering clone(), fork(), and vfork() syscalls, \\
+		the tracer had to change them to clone() with appropriate flags
+	\item \textbf{strace} had to turn vfork() into fork() by stripping \textbf{CLONE\_VFORK} flag
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Following forks\hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{The modern era (since Linux 2.5.46)}
+\begin{itemize}
+	\item introduced new options:
+		\textbf{PTRACE\_O\_TRACECLONE}, \textbf{PTRACE\_O\_TRACEFORK},
+		and \textbf{PTRACE\_O\_TRACEVFORK}
+	\item newly created threads are traced automatically
+	\item the tracee will enter the corresponding \textbf{PTRACE\_EVENT\_*} stops
+	\item the tracer can find out the new pid in the tracer namespace using
+		\textbf{ptrace(PTRACE\_GETEVENTMSG, pid, 0, \&msg)} \\
+\end{itemize}
+\end{block}
+
+\begin{block}{Related PTRACE\_EVENT\_* stops}
+\begin{itemize}
+	\item \textbf{PTRACE\_EVENT\_CLONE} - stop before return from clone
+	\item \textbf{PTRACE\_EVENT\_FORK} - stop before return from fork
+	\item \textbf{PTRACE\_EVENT\_VFORK} - stop before return from vfork
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Following execs\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{What happens when a thread in a thread group calls execve()}
+\begin{itemize}
+	\item all other threads in the process are destroyed
+	\item the thread ID of the thread that invoked execve() \\
+		is set to the thread group ID
+	\item at completion of the system call, it appears as though \\
+		the execve() occurred in the thread group leader, \\
+		regardless of which thread did the execve()
+	\item this resetting of the thread ID looks very confusing to tracers
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Following execs\hfill [\insertframenumber/\inserttotalframenumber]}
+\begin{block}{Resetting of the thread ID may look very confusing to tracers}
+\begin{itemize}
+	\item all other threads stop in \textbf{PTRACE\_EVENT\_EXIT} stop, \\
+		if \textbf{PTRACE\_O\_TRACEEXIT} option was turned on
+	\item all other threads except the thread group leader report death \\
+		as if they exited via \_exit() with exit code 0.
+	\item the tracee's thread ID is reset to the thread group leader's thread ID
+	\item then a \textbf{PTRACE\_EVENT\_EXEC} stop happens, \\
+		if the \textbf{PTRACE\_O\_TRACEEXEC} option was turned on
+	\item if the thread group leader has reported its \textbf{PTRACE\_EVENT\_EXIT} by this time,
+		it appears to the tracer that the dead thread leader reappears from nowhere
+	\item if the thread group leader was still alive, it appears to the tracer that \\
+		the thread group leader returns from a different system call than it entered, \\
+		or even returned from a system call even though it was not in any system call
+\end{itemize}
+\end{block}
+
+All of the above effects are the artifacts of the thread ID change in the tracee
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Following execs\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Solution (since Linux 2.5.46)}
+\begin{itemize}
+	\item set \textbf{PTRACE\_O\_TRACEEXEC} option
+	\item it enables \textbf{PTRACE\_EVENT\_EXEC} stop, \\
+		which occurs before execve() returns
+	\item in this stop (since Linux 3.0 released $\approx$ 13 years ago), \\
+		the tracer can use \\
+		\textbf{ptrace(PTRACE\_GETEVENTMSG, pid, 0, \&msg)} \\
+		to retrieve the tracee's former thread ID.
+	\item when the tracer receives \textbf{PTRACE\_EVENT\_EXEC} stop notification,
+		it is guaranteed that except this tracee and the thread group leader,
+		no other threads from the process are alive
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Detaching tracees\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{PTRACE\_DETACH}
+\begin{itemize}
+	\item detaching the tracee is performed using \\
+		\textbf{ptrace(PTRACE\_DETACH, pid, 0, sig)}
+	\item \textbf{PTRACE\_DETACH} is a restarting operation
+	\item it requires the tracee to be in a ptrace stop
+	\item if the tracee is in a signal delivery stop,
+		a signal can be injected.
+\end{itemize}
+\end{block}
+
+How do you detach the tracee which is not in a ptrace stop?
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Detaching tracees\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+How do you detach the tracee which is not in a ptrace stop?
+
+\begin{block}{Traditional approach}
+\begin{itemize}
+	\item the tracer sends a \textbf{SIGSTOP} signal to the running tracee,
+	\item then it waits for the tracee to stop in a signal delivery stop state \\
+		for \textbf{SIGSTOP},
+	\item and, finally, detaches the tracee, suppressing the \textbf{SIGSTOP}
+\end{itemize}
+\end{block}
+
+\begin{block}{What's the problem with this approach?}
+\begin{itemize}
+	\item this can race with concurrent \textbf{SIGSTOP}s
+	\item the tracee may enter other ptrace stops and needs
+		to be restarted and waited for again, until \textbf{SIGSTOP} is seen
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Detaching tracees\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Modern approach (since Linux 3.4 released $\approx$ 12 years ago)}
+\begin{itemize}
+	\item the tracer forces the tracee to enter a ptrace stop using
+		\textbf{ptrace(PTRACE\_INTERRUPT, pid, 0, 0)}
+	\item depending on the circumstances, it's either a syscall exit stop, \\
+		signal delivery stop, or a \textbf{PTRACE\_EVENT\_STOP}
+	\item at this point it's safe to detach the tracee using \\
+		\textbf{ptrace(PTRACE\_DETACH, pid, 0, sig)}
+	\item this method is available only when the tracee was attached \\
+		using \textbf{PTRACE\_SEIZE}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Seccomp-assisted syscall filtering limitations\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Design of seccomp filters evaluation}
+\begin{itemize}
+	\item process can have several seccomp filters
+	\item if multiple filters exist, they are all executed
+	\item the most recently installed filter is executed first
+	\item the result of the evaluation for a given system call \\
+		is the \textit{SECCOMP\_RET\_*} action value of highest precedence
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Seccomp-assisted syscall filtering limitations\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{List of seccomp action values in decreasing order of precedence}
+\begin{itemize}
+	\item SECCOMP\_RET\_KILL\_PROCESS
+	\item SECCOMP\_RET\_KILL\_THREAD
+	\item SECCOMP\_RET\_TRAP
+	\item SECCOMP\_RET\_ERRNO
+	\item SECCOMP\_RET\_USER\_NOTIF
+	\item \textbf{SECCOMP\_RET\_TRACE}
+	\item SECCOMP\_RET\_LOG
+	\item SECCOMP\_RET\_ALLOW
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large SECCOMP\_RET\_TRACE Linux kernel misdesign\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Problem}
+\begin{itemize}
+	\item if the tracee has another seccomp filter that
+	\item returns an action value with a precedence greater than \textbf{SECCOMP\_RET\_TRACE},
+	\item then the tracee will not enter \\
+		\textbf{PTRACE\_EVENT\_SECCOMP} stop
+	\item and the tracer will not be notified
+	\item if another seccomp filter e.g. makes the syscall fail, or \\
+		kills the tracee, \textbf{strace -{}-seccomp-bpf} will not be aware \\
+		of that syscall invocation \textbf{\textit{at all}}
+	\item this defeats the very purpose of syscall tracing
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large SECCOMP\_RET\_TRACE Linux kernel misdesign\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Current SECCOMP\_RET\_TRACE implementation}
+\begin{itemize}
+	\item if \textbf{SECCOMP\_RET\_TRACE} has the highest precedence action value of all evaluated seccomp filters,
+	\item the tracee enters \textbf{PTRACE\_EVENT\_SECCOMP} stop
+	\item when the tracee is restarted, seccomp filters are evaluated again
+	\item if \textbf{SECCOMP\_RET\_TRACE} again has the highest precedence action value
+	\item then the syscall is allowed to proceed, similar to \textbf{SECCOMP\_RET\_ALLOW}
+	\item otherwise the highest precedence action value will take effect
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large SECCOMP\_RET\_TRACE Linux kernel misdesign\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Suggested SECCOMP\_RET\_TRACE implementation changes}
+\begin{itemize}
+	\item during the first evaluation of seccomp filters,
+		\textbf{SECCOMP\_RET\_TRACE} should have the highest
+		precedence, allowing the tracer to inspect and interfere
+	\item security-wise, it's safe given that the tracer can interfere \\
+		during syscall enter stop anyway
+	\item during the second evaluation of seccomp filters,
+		\textbf{SECCOMP\_RET\_TRACE} should have the lowest
+		precedence, allowing other action values e.g.
+		\textbf{SECCOMP\_RET\_LOG} to take effect
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Seccomp-assisted syscall filtering limitations\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+A seccomp program can be added, but cannot be removed
+
+\begin{block}{Problem: SECCOMP\_RET\_TRACE rule without a tracer}
+\begin{itemize}
+	\item when a \textbf{SECCOMP\_RET\_TRACE} rule is triggered, \\
+		the syscall is not executed
+	\item instead, it returns a failure status with errno set to \textbf{ENOSYS}, \\
+		similar to a \textbf{SECCOMP\_RET\_ERRNO(ENOSYS)} rule
+	\item former tracee is most likely not equipped to handle \\
+		situations like this
+	\item consequently, all sorts of disasters may follow
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large Why seccomp-assisted syscall filtering is not the default?\hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{\textbf{strace -{}-seccomp-bpf} workarounds and limitations}
+\begin{itemize}
+	\item implies \textbf{-{}-kill-on-exit} option that sets \textbf{PTRACE\_O\_EXITKILL} option
+	\item has no effect unless \textbf{-{}-follow-forks} (\textbf{-f}) option is specified
+	\item incompatible with \textbf{-{}-syscall-limit}=\textit{number} option
+	\item incompatible with \textbf{-{}-detach-on}=\textbf{execve} (\textbf{-b execve}) option
+	\item not applicable to tracees attached using \textbf{-{}-attach}=\textit{pid} (\textbf{-p} \textit{pid}) option
+	\item problematic if the tracee creates threads using \textbf{CLONE\_UNTRACED} flag
+\end{itemize}
+\end{block}
+
+\begin{block}{Why?}
+\begin{itemize}
+	\item \textbf{strace} tries hard to ensure that it will not leave behind \\
+		any unattended processes with the seccomp program it installed \\
+		for syscall filtering purposes
+	\item but we are not there yet
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large PTRACE\_ADD\_SECCOMP\_FILTER?\hfill [\insertframenumber/\inserttotalframenumber]}
+\large
+\begin{block}{What if?}
+\begin{itemize}
+	\item the tracer could install on its tracee a seccomp filter \\
+		that would be tied to the tracer
+	\item when a process ceases to be the tracer of its tracee, all seccomp filters \\
+		associated with that tracer would be automatically removed \\
+		(or permanently deactivated, if removal is not practical)
+\end{itemize}
+\end{block}
+
+\begin{block}{Idea}
+\begin{itemize}
+	\item this could be a new ptrace command issued for tracees in a ptrace stop state:
+		\textbf{ptrace(PTRACE\_ADD\_SECCOMP\_FILTER, pid, flags, args)}
+	\item this would solve all problems that arise currently when a process with \\
+		a seccomp filter containing a \textbf{SECCOMP\_RET\_TRACE} rule \\
+		is left without its tracer.
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large PTRACE\_ADD\_SECCOMP\_FILTER?\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Open API questions}
+\begin{itemize}
+	\item whether such seccomp filters should be returned by \textbf{PTRACE\_SECCOMP\_GET\_FILTER}
+	\item how to return information about the tracer associated with
+		the seccomp filter given that the array of \textbf{struct sock\_filter} objects
+		returned by this ptrace command have no room for that
+	\item how to inject such seccomp filters
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{\Large PTRACE\_SET\_SYSCALL\_INFO?\hfill [\insertframenumber/\inserttotalframenumber]}
+\Large
+\begin{block}{Evolution of ptrace commands for obtaining syscall information}
+\begin{itemize}
+	\item PTRACE\_PEEKUSER -- ancient
+	\item PTRACE\_GETREGS -- old
+	\item PTRACE\_GETREGSET -- traditional
+	\item PTRACE\_GET\_SYSCALL\_INFO -- modern
+\end{itemize}
+\end{block}
+
+\begin{block}{Evolution of ptrace commands for changing syscall information}
+\begin{itemize}
+	\item PTRACE\_POKEUSER -- ancient
+	\item PTRACE\_SETREGS -- old
+	\item PTRACE\_SETREGSET -- traditional
+	\item \textbf{PTRACE\_SET\_SYSCALL\_INFO} -- not implemented yet
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+{
+\setbeamertemplate{footline}{\pgfuseimage{left-corner-logo}}
+\begin{frame}[noframenumbering]{Questions?}
+	\begin{columns}
+		\column{9cm}
+\begin{block}{\large homepage}
+	\url{https://strace.io}
+\end{block}
+\begin{block}{\large strace.git, strace-talks.git}
+	\url{https://github.com/strace/strace.git}
+
+	\url{https://gitlab.com/strace/strace.git}
+
+\smallskip
+
+	\url{https://github.com/strace/strace-talks.git}
+
+	\url{https://gitlab.com/strace/strace-talks.git}
+\end{block}
+\begin{block}{\large mailing list}
+	strace-devel@lists.strace.io
+\end{block}
+\begin{block}{\large IRC channel}
+	\#strace@oftc
+\end{block}
+		\column{3cm}
+			\centerline{\pgfuseimage{strace-logo}}
+	\end{columns}
+\end{frame}
+}
+
+\end{document}
