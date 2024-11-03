@@ -1,0 +1,1476 @@
+% Copyright (C) 2012-2023 Dmitry V. Levin <ldv@strace.io>
+% Copyright (C) 2023-2024 Eugene Syromiatnikov <evgsyr@gmail.com>
+% Permission is granted to copy, distribute and/or modify this document
+% under the terms of the GNU Free Documentation License, Version 1.2
+% or any later version published by the Free Software Foundation;
+% with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+
+\documentclass[unicode,aspectratio=169,xcolor={table,dvipsnames}]{beamer}
+
+\mode<presentation>
+{
+	\usetheme{Warsaw}
+	\setbeamertemplate{headline}{}
+	\setbeamertemplate{footline}{\hfill \insertframenumber/\inserttotalframenumber}
+	\setbeamertemplate{navigation symbols}{}
+}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1,T2A]{fontenc}
+\usepackage[english,czech]{babel}
+\usepackage{alltt}
+\usepackage{verbatim}
+\usepackage{hyperref}
+\usepackage{listings}
+\lstset{
+basicstyle=\scriptsize\ttfamily,
+columns=flexible,
+breaklines=true
+}
+
+\colorlet{darkred}{BrickRed}
+\colorlet{darkgreen}{OliveGreen}
+
+\newcommand{\symlinebreak}{\textcolor{blue}{\(\hookleftarrow\)}}
+\newcommand{\symlinecont}{\textcolor{blue}{\(\longrightarrow\)}}
+
+\pgfdeclareimage[height=1.2cm]{right-corner-logo}{strace-straus.pdf}
+\pgfdeclareimage[height=8cm]{strace-logo}{strace-straus.pdf}
+
+\title{\Huge Současný strace}
+\author{\Huge Eugene Syromiatnikov}
+\date{\Large Brno, 2024}
+
+\logo{\pgfuseimage{right-corner-logo}}
+
+\begin{document}
+
+%%%%%%%
+\begin{frame}
+\titlepage
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Úvod}
+\begin{block}{Co to je \texttt{strace}?}
+\begin{itemize}
+\item \texttt{strace} je ladící program pro Linux, umožňující sledovaní (a případně
+i pozměňování) interakci komunikaci mezi procesy a linuxovým jádrem, včetně
+systémových volání, signálů a změn procesového stavu.
+\item \texttt{strace} funguje na základě systémového volání \texttt{ptrace}.
+\end{itemize}
+\end{block}
+\pause
+\begin{block}{Příklad použití}
+% Spuštění nového programu
+\scriptsize
+\begin{alltt}
+\$ strace echo "Hello world"
+execve("/usr/bin/echo", ["echo", "Hello world"], 0x7ffd5f11c288 /* 12 vars */) = 0
+brk(NULL)                               = 0x56514d3ff000
+mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7fccc36c0000
+access("/etc/ld.so.preload", R_OK)      = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+fstat(3, \{st_mode=S_IFREG|0644, st_size=99278, ...\}) = 0
+mmap(NULL, 99278, PROT_READ, MAP_PRIVATE, 3, 0) = 0x7fccc36a7000
+close(3)                                = 0
+...
+\end{alltt}
+% Už běžící program
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Tradiční funkce strace \hfill [1/3]}
+\large
+\begin{block}{Řízení trasování}
+\begin{itemize}
+\item Připojení k již běžícímu procesu: \textbf{-p \textit{pid}}
+\item Trasovaní potomků procesů: \textbf{-f}
+\end{itemize}
+\end{block}
+
+\begin{block}{Filtrace systémových volání}
+\begin{itemize}
+\item Trasovaní jen uvedené sady systémových volání: \textbf{-e trace=\textit{set}}
+\begin{itemize}
+\item Podporuje použití několika speciálních jmen pro některé vymezené skupiny voláni:
+      \texttt{process}, \texttt{network}, \texttt{signal}, \texttt{ipc}, \texttt{desc}, \texttt{memory}
+\end{itemize}
+\end{itemize}
+\end{block}
+
+\begin{block}{Statistiky volání}
+\begin{itemize}
+\item Počítání času, volání, a chyb pro každé volání: \textbf{-c}
+\item Seřazení tabulky volání: \textbf{-S \textit{sortby}}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Tradiční funkce strace \hfill [2/3]}
+\large
+\begin{block}{Výpis instrukčního ukazatele and časového razítka}
+\begin{itemize}
+\item Výpis instrukčního ukazatele: \textbf{-i}
+\item Výpis časového razítka: \textbf{-r}, \textbf{-t}, \textbf{-tt}, \textbf{-ttt} a \textbf{-T}
+\end{itemize}
+\end{block}
+
+\begin{block}{Maximální velikost a formát řetězců}
+\begin{itemize}
+\item Velikost řetězce: \textbf{-s}
+\item Formát řetězce: \textbf{-x}, \textbf{-xx}
+\end{itemize}
+\end{block}
+
+\begin{block}{Podrobnost výpisu systémových volání}
+\begin{itemize}
+\item Zkrácení výpisu: \textbf{-e abbrev=\textit{set}}, \textbf{-v}
+\item Dereference struktur: \textbf{-e verbose=\textit{set}}
+\item Nezpracovaný výpis volání: \textbf{-e raw=\textit{set}}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Tradiční funkce strace \hfill [3/3]}
+\large
+\begin{block}{Výpis signálů}
+\begin{itemize}
+\item Výpis signálů: \textbf{-e signal=\textit{set}}
+\end{itemize}
+\end{block}
+
+\begin{block}{Výpis I/O}
+\begin{itemize}
+\item Výpis dat přečtených z uvedených deskriptorů: \textbf{-e read=\textit{set}}
+\item Výpis dat zapsaných do uvedených deskriptorů: \textbf{-e write=\textit{set}}
+\end{itemize}
+\end{block}
+
+\begin{block}{Přesměrování výstupů do souboru nebo roury}
+\begin{itemize}
+\item Vystupování trasy do souboru: \textbf{-o \textit{filename}}
+\item Vystupování trasy do roury: \textbf{-o |\textit{command}}
+\item Výpis tras procesů do samostatných souborů: \textbf{-ff -o \textit{prefix}}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Příklad použití tradičních funkci strace}
+\begin{block}{strace -fttTv -s 1024 echo "Hello world"}
+\scriptsize
+\begin{alltt}
+10:59:14.044687 execve("/usr/bin/echo", ["echo", "Hello world"], ["SHELL=/bin/bash", \symlinebreak
+\symlinecont "LANGUAGE=en_US:en", "PWD=/esur", "LOGNAME=esyr", "HOME=/esyr", "LANG=en_US.UTF-8", \symlinebreak
+\symlinecont "TERM=rxvt-unicode", "USER=esyr", "SHLVL=1", \symlinebreak
+\symlinecont "PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/bin", "MAIL=/var/mail/esyr", \symlinebreak
+\symlinecont "_=/usr/bin/strace"]) = 0 <0.000449>
+10:59:14.045522 brk(NULL)               = 0x559a55a90000 <0.000137>
+10:59:14.045917 mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, \symlinebreak
+\symlinecont 0) = 0x7f40113d0000 <0.000166>
+10:59:14.046322 access("/etc/ld.so.preload", R_OK) = -1 ENOENT (No such file or directory) \symlinebreak
+\symlinecont <0.000136>
+10:59:14.046869 openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3 <0.000099>
+10:59:14.047090 fstat(3, \{st_dev=makedev(0xfe, 0x1), st_ino=2095255, st_mode=S_IFREG|0644, \symlinebreak
+\symlinecont st_nlink=1, st_uid=0, st_gid=0, st_blksize=4096, st_blocks=200, st_size=99278, \symlinebreak
+\symlinecont st_atime=1730518958 /* 2024-11-02T04:42:38.145457664+0100 */, st_atime_nsec=145457664, \symlinebreak
+\symlinecont st_mtime=1730518958 /* 2024-11-02T04:42:38.137457664+0100 */, st_mtime_nsec=137457664, \symlinebreak
+\symlinecont st_ctime=1730518958 /* 2024-11-02T04:42:38.137457664+0100 */, st_ctime_nsec=137457664\}) \symlinebreak
+\symlinecont = 0 <0.000033>
+10:59:14.047301 mmap(NULL, 99278, PROT_READ, MAP_PRIVATE, 3, 0) = 0x7f40113b7000 <0.000025>
+10:59:14.047377 close(3)                = 0 <0.000017>
+...
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Odkazy na přednášky o použití strace}
+\begin{block}{Michael Kerrisk, "System Call Tracing with strace"}
+\begin{itemize}
+\item NDC TechTown 2018; 29. srpna 2018, Kongsberg
+\item PDF: \href{https://www.man7.org/conf/ndctechtown2018/system_call_tracing_with_strace-NDC-TechTown-Kerrisk.pdf}f{https://www.man7.org/conf/ndctechtown2018/system\_call\_tracing\_with\_strace-NDC-TechTown-Kerrisk.pdf}
+\item Youtube: \href{https://www.youtube.com/watch?v=oFt6V56BOlo}{https://www.youtube.com/watch?v=oFt6V56BOlo}
+\end{itemize}
+\end{block}
+\begin{block}{Renaud Metrich, "Using strace to troubleshoot issues"}
+\begin{itemize}
+\item Devconf.cz 2023; 17. června 2023, Brno
+\item PDF: \href{https://static.sched.com/hosted_files/devconfcz2023/f3/Devconf%20CZ%202023%20-%20Using%20STRACE%20to%20troubleshoot%20issues.pdf}{https://static.sched.com/hosted\_files/devconfcz2023/f3/Devconf\%20CZ\%202023\%20-\%20Using\%20STRACE\%20to\%20troubleshoot\%20issues.pdf}
+\item Youtube: \href{https://www.youtube.com/watch?v=H4BiBn-7GT8}{https://www.youtube.com/watch?v=H4BiBn-7GT8}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%
+\begin{frame}{Současní strace: přehled \hfill [1/7]}
+\large
+\begin{block}{\large Podpora dlouhých voleb přikazovacího řádku \hfill (od v5.6, duben 2020)}
+\begin{description}
+\item[\textbf{-e trace}]: \textbf{-{}-trace}
+\item[\textbf{-c}]: \textbf{-{}-summary-only}
+\item[\textbf{-f}]: \textbf{-{}-follow-forks}
+\item[\textbf{-ff}]: \textbf{-{}-follow-forks -{}-output-separately}
+\item[\textbf{-r}]: \textbf{-{}-relative-timestamps[=\textit{precision}]}
+\item[\textbf{-t}]: \textbf{-{}-absolute-timestamps}
+\item[\textbf{-tt}]: \textbf{-{}-absolute-timestamps=precision:us}
+\item[\textbf{-ttt}]: \textbf{-{}-absolute-timestamps=format:unix,precision:us}
+\item[\textbf{-T}]: \textbf{-{}-syscall-times}
+\item[\textbf{-v}]: \textbf{-{}-no-abbrev}
+\item[\textbf{-x}]: \textbf{-{}-strings-in-hex=non-ascii}
+\item[\textbf{-xx}]: \textbf{-{}-strings-in-hex[=all]}
+\end{description}
+\end{block}
+\end{frame}
+
+%%%%%%
+\begin{frame}{Současní strace: přehled \hfill [2/7]}
+\large
+\begin{block}{Výstup trasy \hfill [1/2]}
+\begin{itemize}
+\item Rozvoj rozboru systémových volání, příkazů ioctl, a protokolů netlink
+\item Výpis cest k souborům u souborových deskriptorů: \textbf{-y}/\textbf{-{}-decode-fds} (v4.7, květen 2012)
+\item Výpis doplňkové informace o souborových deskriptorech: \textbf{-{}-decode-fds=[\textit{set}]}
+\begin{itemize}
+\item síťový protokol a adresy (\textbf{socket}, v4.12, květen 2016)
+\item major/minor čísla zařízení (\textbf{dev}, v4.22, duben 2018)
+\item číslo procesu u pidfd (\textbf{pidfd}, v5.6, duben 2020)
+\item sada signálů u signalfd (\textbf{signalfd}, v6.3, květen 2023)
+\item detaily události u eventfd (\textbf{eventfd}, v6.10, červenec 2024)
+\end{itemize}
+\item Výpis doplňkové informace o PID: \textbf{-{}-decode-pids=[\textit{set}]}
+\begin{itemize}
+\item Výpis PID procesu v jmenném prostoru PID strace: \textbf{-{}-pidns-translation}/\textbf{-{}-decode-pids=pidns} (v5.9, září 2019)
+\item Výpis \texttt{comm} procesů, spojených s PID: \textbf{-Y}/\textbf{-{}-decode-pids=comm} (v5.15, prosinec 2021)
+\end{itemize}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%
+\begin{frame}{Současní strace: přehled \hfill [3/7]}
+\large
+\begin{block}{Výstup trasy \hfill [2/2]}
+\begin{itemize}
+\item Výpis zásobníku volání funkci: \textbf{-k}/\textbf{-{}-stack-trace} (v4.9, srpen 2014)
+\begin{itemize}
+\item Výpis informace o souboru a řádku v zdrojovém kódu: \textbf{-kk}/\textbf{-{}-stack-trace=source} (v6.7, leden 2024)
+\end{itemize}
+\item Výpis kontextů SELinux: \textbf{-{}-secontext} (v5.12, duben 2021)
+\begin{itemize}
+\item Výpis nesouladů mezi aktuálním kontextem a databází SELinux: \textbf{-{}-secontext=mismatch} (v5.16, leden 2022)
+\end{itemize}
+\item Výpis čísla systémového volání: \textbf{-n}/\textbf{-{}-syscall-number} (v5.9, duben 2020)
+\item Nucení výpisu PID procesu v trase: \textbf{-{}-always-show-pid} (v6.9, květen 2024)
+\item Formát výpisu jmenovaných konstant a příznaku: \textbf{-X}/\textbf{-{}-const-print-style} (v4.23, červen 2018)
+\item Otevírání výstupních souboru na doplnění: \textbf{-A}/\textbf{-{}-output-append-mode} (v4.22, duben 2018)
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%
+\begin{frame}{Současní strace: přehled \hfill [4/7]}
+\large
+\begin{block}{\large Filtrace systémových volání}
+\begin{itemize}
+\item Souborové cesty, přístup k nímž se realizuje přes jméno nebo deskriptor: \textbf{-P} (v4.7, květen 2012)
+\item Návratový stav: \textbf{-{}-status}=\textit{set} (v5.2, červenec 2019)
+\item Používané deskriptory: \textbf{-{}-trace-fds}=\textit{set} (v6.3, květen 2023)
+\item Zadání systémových volání regulárními výrazy: \textbf{-e trace=/\textit{regexp}} (v4.17, květen 2017)
+\item Nepovinné specifikace systémových volání: \textbf{-e trace=?\textit{spec}} (v4.17, květen 2017) % v4.17~48
+\item Nové skupiny systémových volání: \textbf{\%clock} (v5.7, červen 2020), \textbf{\%creds} (v5.5, únor 2020), \textbf{\%pure} (v4.21, únor 2018), \textbf{\%stat}, \textbf{\%lstat}, \textbf{\%fstat}, \textbf{\%statfs}, \textbf{\%fstatfs}, \textbf{\%\%stat}, \textbf{\%\%statfs} (v4.17, květen 2017)
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Současní strace: přehled \hfill [5/7]}
+\large
+\begin{block}{Spuštění programu}
+\begin{itemize}
+\item Zadaní \texttt{argv[0]} prováděného programu: \textbf{-{}-argv0=\textit{name}} (v6.3, květen 2023)
+\end{itemize}
+\end{block}
+
+\begin{block}{\large Řízení trasování}
+\begin{itemize}
+\item Přípojení k několika procesům: \textbf{-p \textit{pid\_set}} (v4.7, květen 2012)
+\item Spuštění jako oddělené vnouče: \textbf{-D}/\textbf{-{}-daemonize} (v4.5.19, září 2009) % v4.5.19~111
+\begin{itemize}
+\item Další možnosti oddělení: \textbf{-{}-daemonize=\{pgroup|session\}} (v5.4, listopad 2019)
+\end{itemize}
+\item Odpojení po \texttt{execve}: \textbf{-b execve}/\textbf{-{}-detach-on=execve} (v4.7, květen 2012) % v4.7~97
+\item Odpojení po dosahu specifikovaného počtů vypsaných systémových volání: \textbf{-{}-syscall-limit=\textit{number}} (v6.3, květen 2023)
+\item Nastavení signálů, jež strace ignoruje: \textbf{-I}/\textbf{-{}-interruptible} (v4.7, květen 2012)
+\item Ukončení tracee s ukončením strace: \textbf{-{}-kill-on-exit} (v6.6, říjen 2023)
+\item Filtrace systémových volání přes \texttt{seccomp}: \textbf{-{}-seccomp-bpf} (v5.3, září 2019)
+\end{itemize}
+\end{block}
+
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Současní strace: přehled \hfill [6/7]}
+\large
+\begin{block}{\large Manipulovaní systémovými voláními}
+\begin{itemize}
+\item Injekce chyb (v4.15, prosinec 2016): \\
+-e \textbf{inject}=\textit{set}:\textbf{error}=\textit{errno}[:\textbf{when}=\textit{expr}][:\textbf{syscall}=\textit{syscall}]
+\item Injekce návratných hodnot (v4.16, únor 2017): \\
+-e \textbf{inject}=\textit{set}:\textbf{retval}=\textit{value}[:\textbf{when}=\textit{expr}][:\textbf{syscall}=\textit{syscall}]
+\item Injekce signálů (v4.16, únor 2017): \\
+-e \textbf{inject}=\textit{set}:\textbf{signal}=\textit{set}
+\item Injekce zdržení (v4.22, duben 2018): \\
+-e \textbf{inject}=\textit{set}:\textbf{delay\_enter}=\textit{usecs} \\
+-e \textbf{inject}=\textit{set}:\textbf{delay\_exit}=\textit{usecs}
+\item Změna obsahu paměti (v5.11, únor 2021): \\
+-e \textbf{inject}=\textit{set}:\textbf{poke\_enter}=@\textit{argN}=\textit{dataN}] \\
+-e \textbf{inject}=\textit{set}:\textbf{poke\_exit}=@\textit{argN}=\textit{dataN}]
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Současní strace: přehled \hfill [7/7]}
+\large
+\begin{block}{\large Statistiky volání}
+\begin{itemize}
+\item Reálný čas ("nástěnných hodin"), strávený v systémovém voláním: \textbf{-w}/\textbf{-{}-summary-wall-clock} (v4.9, srpen 2014)
+\item Kombinovaní regulárního výstupu a výpisu souhrnu volání: \textbf{-C}/\textbf{-{}-summary} (v4.5.20, duben 2010)
+\item Nastavení sady sloupců tabulky souhrnu volání: \textbf{-U}/\textbf{-{}-summary-columns=\textit{set}} (v5.6, duben 2020)
+\end{itemize}
+\end{block}
+
+\begin{block}{Různé}
+\begin{itemize}
+\item Výpis rad a vychytávek: \textbf{-{}-tips} (v5.18, červen 2022)
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Rozbor operaci \texttt{ioctl} \hfill [1/2]}
+\begin{block}{\large Některé skupiny operaci \texttt{ioctl}, jejichž rozbor podporuje strace}
+\begin{columns}
+	\column{6cm}
+		\begin{itemize}
+			\item BLK*
+			\item BTRFS\_*
+			\item DM\_*
+			\item EV* (evdev)
+			\item GPIO\_*
+			\item HDIO\_*
+			\item KD*
+			\item LIRC\_*
+			\item LOOP\_*
+			\item MEM* (MTD)
+			\item NBD\_*
+			\item NS\_*
+		\end{itemize}
+	\column{6cm}
+		\begin{itemize}
+			\item PERF\_EVENT\_IOC\_*
+			\item PTP\_*
+			\item RANDOM\_*
+			\item RTC\_*
+			\item SECCOMP\_*
+			\item SIOC\_*
+			\item SG\_*
+			\item TEE\_*
+			\item UBI\_*
+			\item UFFDIO\_*
+			\item VIDIOC\_*
+			\item WDIOC\_*
+		\end{itemize}
+\end{columns}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Rozbor operaci \texttt{ioctl} \hfill [2/2]}
+\begin{block}{\scriptsize strace -v -{}-trace=ioctl dmsetup ls}
+\scriptsize
+\begin{alltt}
+ioctl(3, DM_VERSION, \{version=4.0.0, data_size=16384, flags=DM_EXISTS_FLAG\}
+\symlinecont => \{version=4.43.0, data_size=16384, flags=DM_EXISTS_FLAG\}) = 0
+ioctl(3, DM_LIST_DEVICES, \{version=4.0.0, data_size=16384, data_start=312,
+\symlinecont flags=DM_EXISTS_FLAG\} => \{version=4.43.0, data_size=472, data_start=312,
+\symlinecont flags=DM_EXISTS_FLAG, \{dev=makedev(0xfe, 0), name="nvme0n1p3_crypt", event_nr=0\},
+\symlinecont \{dev=makedev(0xfe, 0x3), name="nurgle--vg-home", event_nr=0\},
+\symlinecont \{dev=makedev(0xfe, 0x1), name="nurgle--vg-root", event_nr=0\},
+\symlinecont \{dev=makedev(0xfe, 0x2), name="nurgle--vg-swap_1"\}\}) = 0
+\end{alltt}
+\end{block}
+\begin{block}{\scriptsize\url{https://git.kernel.org/pub/scm/linux/kernel/git/legion/kbd.git/commit/?id=1002d3b56b72}}
+\scriptsize
+\begin{alltt}
+Author: Alexey Gladkov <gladkov.alexey@gmail.com>
+Date:   Tue Apr 25 17:32:11 2023 +0200
+\end{alltt}
+\vspace{-3ex}
+\begin{alltt}
+    tests: Use strace to track syscalls
+\end{alltt}
+\vspace{-3ex}
+\begin{alltt}
+    Now strace is powerful enough to show ioctls specific to console
+    configuration. Additional benefit of using strace is that we can
+    enable end-to-end tests for statically linked utilities.
+\end{alltt}
+\vspace{-3ex}
+\begin{alltt}
+    Signed-off-by: Alexey Gladkov <gladkov.alexey@gmail.com>
+\end{alltt}
+\vspace{-3ex}
+\begin{alltt}
+ 37 files changed, 15955 insertions(+), 105164 deletions(-)
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Rozbor protokolů netlink}
+\scriptsize
+\begin{block}{\large Podporované v současnosti protokoly netlink}voleb\begin{itemize}
+\item NETLINK\_AUDIT
+\item NETLINK\_CRYPTO
+\item NETLINK\_KOBJECT\_UEVENT
+\item NETLINK\_NETFILTER
+\item NETLINK\_ROUTE
+\item NETLINK\_SELINUX
+\item NETLINK\_SOCK\_DIAG
+\item NETLINK\_XFRM
+\item NETLINK\_GENERIC
+\end{itemize}
+\end{block}
+\begin{block}{\large NETLINK\_ROUTE: ip route list table all}
+\begin{alltt}
+local 127.0.0.0/8 dev lo table local proto kernel scope host src 127.0.0.1
+local 127.0.0.1 dev lo table local proto kernel scope host src 127.0.0.1
+broadcast 127.255.255.255 dev lo table local proto kernel scope link src 127.0.0.1
+local ::1 dev lo table local proto kernel metric 0 pref medium
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Rozbor protokolů netlink: NETLINK\_ROUTE}
+\tiny
+\begin{block}{\large strace -{}-trace=sendto,recvmsg ip route list}
+\begin{alltt}
+sendto(3, [[\textcolor{darkgreen}{\{nlmsg_len=28, nlmsg_type=RTM_GETROUTE, nlmsg_flags=NLM_F_REQUEST|NLM_F_DUMP, nlmsg_seq=135792468, nlmsg_pid=0\}}, \symlinebreak
+\symlinecont \textcolor{blue}{\{rtm_family=AF_UNSPEC, rtm_dst_len=0, rtm_src_len=0, rtm_tos=0, rtm_table=RT_TABLE_UNSPEC, \symlinebreak
+\symlinecont rtm_protocol=RTPROT_UNSPEC, rtm_scope=RT_SCOPE_UNIVERSE, rtm_type=RTN_UNSPEC, rtm_flags=0\}}], \symlinebreak
+\symlinecont \textcolor{darkgreen}{\{nlmsg_len=0, nlmsg_type=0, nlmsg_flags=0, nlmsg_seq=0, nlmsg_pid=0\}}], 156, 0, NULL, 0) = 156
+
+recvmsg(3, \{msg_name=\{sa_family=AF_NETLINK, nl_pid=0, nl_groups=00000000\}, msg_namelen=12, \symlinebreak
+\symlinecont msg_iov=[\{iov_base=[[\textcolor{darkgreen}{\{nlmsg_len=60, nlmsg_type=RTM_NEWROUTE, \symlinebreak
+\symlinecont nlmsg_flags=NLM_F_MULTI|NLM_F_DUMP_FILTERED, nlmsg_seq=135792468, nlmsg_pid=1234567\}}, \symlinebreak
+\symlinecont \textcolor{blue}{\{rtm_family=AF_INET, rtm_dst_len=8, rtm_src_len=0, rtm_tos=0, rtm_table=RT_TABLE_LOCAL, \symlinebreak
+\symlinecont rtm_protocol=RTPROT_KERNEL, rtm_scope=RT_SCOPE_HOST, rtm_type=RTN_LOCAL, rtm_flags=0\}}, \symlinebreak
+\symlinecont \textcolor{darkred}{[[\{nla_len=8, nla_type=RTA_TABLE\}, RT_TABLE_LOCAL], [\{nla_len=8, nla_type=RTA_DST\}, inet_addr("127.0.0.0")], \symlinebreak
+\symlinecont [\{nla_len=8, nla_type=RTA_PREFSRC\}, inet_addr("127.0.0.1")], [\{nla_len=8, nla_type=RTA_OIF\}, if_nametoindex("lo")]]}], \symlinebreak
+\symlinecont [\textcolor{darkgreen}{\{nlmsg_len=60, nlmsg_type=RTM_NEWROUTE, nlmsg_flags=NLM_F_MULTI|NLM_F_DUMP_FILTERED, \symlinebreak
+\symlinecont nlmsg_seq=135792468, nlmsg_pid=1234567\}}, \symlinebreak
+\symlinecont \textcolor{blue}{\{rtm_family=AF_INET, rtm_dst_len=32, rtm_src_len=0, rtm_tos=0, rtm_table=RT_TABLE_LOCAL, \symlinebreak
+\symlinecont rtm_protocol=RTPROT_KERNEL, rtm_scope=RT_SCOPE_HOST, rtm_type=RTN_LOCAL, rtm_flags=0\}}, \symlinebreak
+\symlinecont \textcolor{darkred}{[[\{nla_len=8, nla_type=RTA_TABLE\}, RT_TABLE_LOCAL], [\{nla_len=8, nla_type=RTA_DST\}, inet_addr("127.0.0.1")], \symlinebreak
+\symlinecont [\{nla_len=8, nla_type=RTA_PREFSRC\}, inet_addr("127.0.0.1")], [\{nla_len=8, nla_type=RTA_OIF\}, if_nametoindex("lo")]]}], \symlinebreak
+\symlinecont [\textcolor{darkgreen}{\{nlmsg_len=60, nlmsg_type=RTM_NEWROUTE, nlmsg_flags=NLM_F_MULTI|NLM_F_DUMP_FILTERED, \symlinebreak
+\symlinecont nlmsg_seq=135792468, nlmsg_pid=1234567\}}, \symlinebreak
+\symlinecont \textcolor{blue}{\{rtm_family=AF_INET, rtm_dst_len=32, rtm_src_len=0, rtm_tos=0, rtm_table=RT_TABLE_LOCAL, \symlinebreak
+\symlinecont rtm_protocol=RTPROT_KERNEL, rtm_scope=RT_SCOPE_LINK, rtm_type=RTN_BROADCAST, rtm_flags=0\}}, \symlinebreak
+\symlinecont \textcolor{darkred}{[[\{nla_len=8, nla_type=RTA_TABLE\}, RT_TABLE_LOCAL], [\{nla_len=8, nla_type=RTA_DST\}, inet_addr("127.255.255.255")], \symlinebreak
+\symlinecont [\{nla_len=8, nla_type=RTA_PREFSRC\}, inet_addr("127.0.0.1")], [\{nla_len=8, nla_type=RTA_OIF\}, if_nametoindex("lo")]]}]], \symlinebreak
+\symlinecont iov_len=32768\}], msg_iovlen=1, msg_controllen=0, msg_flags=0\}, 0) = 180
+
+\ldots
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Výpis informace o souborových deskriptorech}
+\large
+\begin{block}{\large \textbf{-{}-decode-fds=\textit{set}}}
+\begin{description}
+	\item[path]: výpis souborové cesty spojené s deskriptorem a \texttt{AT\_FDCWD}
+	\item[socket]: výpis informace o protokolu a adresách spojené s sokety
+	\item[dev]: výpis čísel znakových/blokových zařízení
+	\item[pidfd]: výpis PID spojených s deskriptorem pidfd
+	\item[signalfd]: výpis signálové masky spojené s deskriptorem signalfd
+	\item[eventfd]: výpis informace o události spojené s deskriptorem eventfd
+\end{description}
+\end{block}
+\begin{block}{\large Implicitní hodnoty a pseudonymy}
+\begin{itemize}
+\item Standardně je \textbf{-{}-decode-fds}=\textbf{none}
+\item \textbf{-y} je pseudonym pro \textbf{-{}-decode-fds}=\textbf{path}
+\item \textbf{-yy} je pseudonym pro \textbf{-{}-decode-fds}=\textbf{all}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Výpis informace spojené s zařízeními and sokety}
+\begin{block}{\large strace \textbf{-yy} -e \%desc,\%network nc 127.0.0.1 22 < /dev/null}
+\scriptsize
+\begin{alltt}
+\ldots
+socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) = 3\textcolor{darkred}{<TCP:[518663]>}
+connect(3\textcolor{darkred}{<TCP:[518663]>}, {sa_family=AF_INET, sin_port=htons(22), \symlinebreak
+\symlinecont sin_addr=inet_addr("127.0.0.1")}, 16) = 0
+poll([{fd=3\textcolor{darkred}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}, events=POLLIN}, \symlinebreak
+\symlinecont {fd=0\textcolor{darkgreen}{</dev/null<char 1:3>>}, events=POLLIN}], 2, -1) = 1 ([{fd=0, revents=POLLIN}])
+read(0\textcolor{darkgreen}{</dev/null<char 1:3>>}, "", 2048)  = 0
+shutdown(3\textcolor{darkred}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}, SHUT_WR) = 0
+poll([{fd=3\textcolor{darkred}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}, events=POLLIN}, {fd=-1}], 2, -1) \symlinebreak
+\symlinecont = 1 ([{fd=3, revents=POLLIN}])
+read(3\textcolor{darkred}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}, "SSH-2.0-OpenSSH_9.4{\textbackslash}r{\textbackslash}n", 2048) = 21
+write(1\textcolor{darkgreen}{</dev/pts/1<char 136:1>>}, "SSH-2.0-OpenSSH_9.4{\textbackslash}r{\textbackslash}n", 21) = 21
+poll([{fd=3\textcolor{darkred}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}, events=POLLIN}, {fd=-1}], 2, -1) \symlinebreak
+\symlinecont = 1 ([{fd=3, revents=POLLIN|POLLHUP}])
+read(3\textcolor{darkred}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}, "", 2048) = 0
+shutdown(3\textcolor{darkred}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}, SHUT_RD) \symlinebreak
+\symlinecont = -1 ENOTCONN (Transport endpoint is not connected)
+close(3\textcolor{darkred}{<TCP:[127.0.0.1:45678->127.0.0.1:22]>}) = 0
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Rozbor signálových masek deskriptorů signalfd: \textbf{-{}-decode-fds}=\textbf{signalfd}}
+\begin{block}{strace -q -yy --trace=/signalfd,/epoll\_ctl --syscall-limit=3 \textbackslash \\ /usr/lib/systemd/systemd-portabled}
+\begin{alltt}
+\small
+signalfd4(-1, [INT], 8, SFD_CLOEXEC|SFD_NONBLOCK) = 4<signalfd:[\textcolor{darkred}{INT}]>
+epoll_ctl(3<anon_inode:[eventpoll]>, EPOLL_CTL_ADD, 4<signalfd:[\textcolor{darkred}{INT}]>, \symlinebreak
+\symlinecont {events=EPOLLIN, data={u32=112224560, u64=94214514829616}}) = 0
+signalfd4(4<signalfd:[\textcolor{darkred}{INT}]>, [INT TERM], 8, SFD_CLOEXEC|SFD_NONBLOCK) \symlinebreak
+\symlinecont = 4<signalfd:[\textcolor{darkred}{INT TERM}]>
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Rozbor různé informace spojené s ID procesů}
+\large
+\begin{block}{\textbf{-{}-decode-pids}=\textit{set}}
+\begin{description}
+	\item[comm]: výpis jmena příkazu (právě \texttt{comm}) spojeného s ID vlákna nebo procesa
+	\item[pidns]: výpis ID vlákna, procesa, procesaové skupiny, nebo seance v jmenném prostoru strace,
+                      pokud sledovaný proces je v jiném jmenném prostoru PID
+\end{description}
+\end{block}
+
+\begin{block}{\large Implicitní hodnoty a pseudonymy}
+\begin{itemize}
+\item Standardně je \textbf{-{}-decode-pids}=\textbf{none}
+\item \textbf{-Y} je pseudonym pro \textbf{-{}-decode-pids}=\textbf{comm}
+\item \textbf{-{}-decode-pids}=\textbf{all} je pseudonym pro \textbf{-{}-decode-pids}=\textbf{comm},\textbf{pidns}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Výpis jmen příkazů u PID: \textbf{-{}-decode-pids}=\textbf{comm}, \textbf{-Y} \hfill }
+\small
+\begin{block}{strace -f \textbf{-Y} -e\%process timeout 1 sleep 2}
+\scriptsize
+\begin{alltt}
+execve("/usr/bin/timeout", ["timeout", "1", "sleep", "2"], 0x7ffcfb9bb348 /* 17 vars */) = 0
+clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|CLONE_CHILD_SETTID|SIGCHLD, \symlinebreak
+\symlinecont child_tidptr=0x7f116942da10) = 123452\textcolor{darkgreen}{<timeout>}
+strace: Process 123452 attached
+[pid 123451\textcolor{darkgreen}{<timeout>}] wait4(123452\textcolor{darkgreen}{<timeout>}, 0x7ffc132b1a28, WNOHANG, NULL) = 0
+[pid 123452\textcolor{darkgreen}{<timeout>}] execve("/bin/sleep", ["sleep", "2"], 0x7ffc132b1ce0 /* 17 vars */) = 0
+[pid 123451\textcolor{darkgreen}{<timeout>}] --- SIGALRM \{si_signo=SIGALRM, si_code=SI_TIMER, \symlinebreak
+\symlinecont si_timerid=0, si_overrun=0, si_int=0, si_ptr=NULL\} ---
+[pid 123451\textcolor{darkgreen}{<timeout>}] kill(123452\textcolor{darkred}{<sleep>}, SIGTERM) = 0
+[pid 123452\textcolor{darkred}{<sleep>}] --- SIGTERM \{si_signo=SIGTERM, si_code=SI_USER, \symlinebreak
+\symlinecont si_pid=123451\textcolor{darkgreen}{<timeout>}, si_uid=1000\} ---
+[pid 123451\textcolor{darkgreen}{<timeout>}] kill(0, SIGTERM) = 0
+[pid 123451\textcolor{darkgreen}{<timeout>}] --- SIGTERM \{si_signo=SIGTERM, si_code=SI_USER, \symlinebreak
+\symlinecont si_pid=123451\textcolor{darkgreen}{<timeout>}, si_uid=1000\} ---
+[pid 123451\textcolor{darkgreen}{<timeout>}] kill(123452\textcolor{darkred}{<sleep>}, SIGCONT) = 0
+[pid 123452\textcolor{darkred}{<sleep>}] +++ killed by SIGTERM +++
+--- SIGCHLD \{si_signo=SIGCHLD, si_code=CLD_KILLED, si_pid=123452\textcolor{darkred}{<sleep>}, \symlinebreak
+\symlinecont si_uid=1000, si_status=SIGTERM, si_utime=0, si_stime=0\} ---
+kill(0, SIGCONT)                        = 0
+--- SIGCONT \{si_signo=SIGCONT, si_code=SI_USER, si_pid=123451\textcolor{darkgreen}{<timeout>}, si_uid=1000\} ---
+wait4(123452\textcolor{darkred}{<sleep>}, [{WIFSIGNALED(s) && WTERMSIG(s) == SIGTERM}], WNOHANG, NULL) = 123452
+exit_group(124)                         = ?
++++ exited with 124 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Výpis jmen příkazů a překlad PID mezi jimennými prostory}
+\large
+\begin{block}{strace \textbf{-{}-decode-pids=all} -q -f -{}-trace=clone,kill \textbackslash \\ unshare -Urpf sh -c 'sleep 2 \& sleep 1 \&\& kill \$!'}
+\scriptsize
+\begin{alltt}
+clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|CLONE_CHILD_SETTID|SIGCHLD, \symlinebreak
+\symlinecont child_tidptr=0x7ff30b283a10) = 123456\textcolor{darkgreen}{<unshare>}
+[pid 123456\textcolor{darkgreen}{<sh>}] clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|CLONE_CHILD_SETTID|SIGCHLD, \symlinebreak
+\symlinecont child_tidptr=0x7f6dccd89a10) = 2\textcolor{darkgreen}{<sh>} \textcolor{darkred}{/* 123457 in strace's PID NS */}
+[pid 123456\textcolor{darkgreen}{<sh>}] clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|CLONE_CHILD_SETTID|SIGCHLD, \symlinebreak
+\symlinecont child_tidptr=0x7f6dccd89a10) = 3\textcolor{darkgreen}{<sh>} \textcolor{darkred}{/* 123458 in strace's PID NS */}
+[pid 123458\textcolor{darkgreen}{<sleep>}] +++ exited with 0 +++
+[pid 123456\textcolor{darkgreen}{<sh>}] --- SIGCHLD \{si_signo=SIGCHLD, si_code=CLD_EXITED, \symlinebreak
+\symlinecont si_pid=3, si_uid=0, si_status=0, si_utime=0, si_stime=0\} ---
+[pid 123456\textcolor{darkgreen}{<sh>}] kill(2\textcolor{darkgreen}{<sleep>} \textcolor{darkred}{/* 123457 in strace's PID NS */}, SIGTERM) = 0
+[pid 123457\textcolor{darkgreen}{<sleep>}] --- SIGTERM \{si_signo=SIGTERM, si_code=SI_USER, \symlinebreak
+\symlinecont si_pid=1\textcolor{darkgreen}{<sh>} \textcolor{darkred}{/* 123456 in strace's PID NS */}, si_uid=0\} ---
+[pid 123457\textcolor{darkgreen}{<sleep>}] +++ killed by SIGTERM +++
+[pid 123456\textcolor{darkgreen}{<sh>}] +++ exited with 0 +++
+--- SIGCHLD \{si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=123456, \symlinebreak
+\symlinecont si_uid=0, si_status=0, si_utime=0, si_stime=0\} ---
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Výpis zásobníku volání funkci: \textbf{-k}}
+\begin{block}{\large strace -qq -P /dev/full cat /dev/null > /dev/full}
+\scriptsize
+\begin{alltt}
+fstat(1, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 7), ...}) = 0
+close(1)                                = 0
+\end{alltt}
+\end{block}
+
+\begin{block}{\large strace \textbf{-k} -qq -P /dev/full cat /dev/null > /dev/full}
+\tiny
+\begin{alltt}
+fstat(1, {st_mode=S_IFCHR|0666, st_rdev=makedev(0x1, 0x7), ...}) = 0
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(__fxstat+0x13) [0x107653]
+ > /usr/bin/cat(main+0x1a8) [0x2548]
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(__libc_start_call_main+0x79) [0x29c89]
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(__libc_start_main@@GLIBC_2.34+0x84) [0x29d44]
+ > /usr/bin/cat(_start+0x29) [0x2f09]
+close(1)                                = 0
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(__close_nocancel+0x7) [0xfac57]
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(_IO_file_close_it@@GLIBC_2.2.5+0x62) [0x83492]
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(fclose@@GLIBC_2.2.5+0x102) [0x77932]
+ > /usr/bin/cat(close_stream+0x1c) [0x631c]
+ > /usr/bin/cat(close_stdout+0x12) [0x3492]
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(__run_exit_handlers+0x155) [0x41a35]
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(exit+0x19) [0x41b69]
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(__libc_start_call_main+0x80) [0x29c90]
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(__libc_start_main@@GLIBC_2.34+0x84) [0x29d44]
+ > /usr/bin/cat(_start+0x29) [0x2f09]
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Výpis místa volání v zdrojovém kódu: \textbf{-kk}}
+\begin{block}{\large strace -qq -P /dev/full cat /dev/null > /dev/full}
+\scriptsize
+\begin{alltt}
+fstat(1, {st_mode=S_IFCHR|0666, st_rdev=makedev(1, 7), ...}) = 0
+close(1)                                = 0
+\end{alltt}
+\end{block}
+
+\begin{block}{\large strace \textbf{-kk} -qq -P /dev/full cat /dev/null > /dev/full}
+\tiny
+\begin{alltt}
+fstat(1, {st_mode=S_IFCHR|0666, st_rdev=makedev(0x1, 0x7), ...}) = 0
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(__fxstat+0x13) [0x107653] ../sysdeps/unix/sysv/linux/fxstat64.c:51
+ > /usr/bin/cat(main+0x1a8) [0x2548] /usr/include/x86_64-linux-gnu/sys/stat.h:469
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(__libc_start_call_main+0x79) [0x29c89] ../sysdeps/nptl/libc_start_call_main.h:58
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(__libc_start_main@@GLIBC_2.34+0x84) [0x29d44] ../csu/libc-start.c:360
+ > /usr/bin/cat(_start+0x29) [0x2f09]
+close(1)                                = 0
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(__close_nocancel+0x7) [0xfac57] ../sysdeps/unix/sysv/linux/close_nocancel.c:26
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(_IO_file_close_it@@GLIBC_2.2.5+0x62) [0x83492] ./libio/fileops.c:142
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(fclose@@GLIBC_2.2.5+0x102) [0x77932] ./libio/iofclose.c:53
+ > /usr/bin/cat(close_stream+0x1c) [0x631c] lib/close-stream.c:60
+ > /usr/bin/cat(close_stdout+0x12) [0x3492] lib/closeout.c:119
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(__run_exit_handlers+0x155) [0x41a35] ./stdlib/exit.c:108
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(exit+0x19) [0x41b69] ./stdlib/exit.c:138
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(__libc_start_call_main+0x80) [0x29c90] ../sysdeps/nptl/libc_start_call_main.h:74
+ > /usr/lib/x86_64-linux-gnu/libc.so.6(__libc_start_main@@GLIBC_2.34+0x84) [0x29d44] ../csu/libc-start.c:360
+ > /usr/bin/cat(_start+0x29) [0x2f09]
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Výpis kontextů SELinux: \textbf{-{}-secontext}}
+\large
+\begin{block}{strace -P /dev/null cat /dev/null}
+\scriptsize
+\begin{alltt}
+openat(AT_FDCWD, "/dev/null", O_RDONLY) = 3
+newfstatat(3, "", \{st_mode=S_IFCHR|0666, st_rdev=makedev(0x1, 0x3), ...\}, AT_EMPTY_PATH) = 0
+fadvise64(3, 0, 0, POSIX_FADV_SEQUENTIAL) = 0
+read(3, "", 131072)                     = 0
+close(3)                                = 0
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\large
+\begin{block}{strace \textbf{-{}-secontext} -P /dev/null cat /dev/null}
+\scriptsize
+\begin{alltt}
+[\textcolor{darkgreen}{unconfined_t}] openat(AT_FDCWD, "/dev/null" [\textcolor{darkred}{null_device_t}], O_RDONLY) = 3 [\textcolor{darkred}{null_device_t}]
+[\textcolor{darkgreen}{unconfined_t}] newfstatat(3 [\textcolor{darkred}{null_device_t}], "", \{st_mode=S_IFCHR|0666, \symlinebreak
+\symlinecont st_rdev=makedev(0x1, 0x3), ...\}, AT_EMPTY_PATH) = 0
+[\textcolor{darkgreen}{unconfined_t}] fadvise64(3 [\textcolor{darkred}{null_device_t}], 0, 0, POSIX_FADV_SEQUENTIAL) = 0
+[\textcolor{darkgreen}{unconfined_t}] read(3 [\textcolor{darkred}{null_device_t}], "", 131072) = 0
+[\textcolor{darkgreen}{unconfined_t}] close(3 [\textcolor{darkred}{null_device_t}]) = 0
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Výpis kontextů SELinux: \textbf{-{}-secontext}=\textbf{mismatch}}
+\large
+\begin{block}{Příklad nesouladu kontextů SELinux}
+\scriptsize
+\begin{alltt}
+\$ matchpathcon $PWD/config.h
+/home/me/strace/src/config.h	unconfined_u:object_r:user_home_t:s0
+\$ ls -Z $PWD/config.h
+system_u:object_r:user_home_t:s0 /home/me/strace/src/config.h
+\end{alltt}
+\end{block}
+\large
+\begin{block}{strace \textbf{-{}-secontext}=\textbf{full},\textbf{mismatch}}
+\scriptsize
+\begin{alltt}
+\$ strace --secontext=full,mismatch --trace=\%file stat config.h
+\ldots
+[unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023] statx(AT_FDCWD, "config.h" \symlinebreak
+\symlinecont [\textcolor{darkred}{system_u:object_r:user_home_t:s0!!unconfined_u:object_r:user_home_t:s0}], \symlinebreak
+\symlinecont AT_STATX_SYNC_AS_STAT|AT_SYMLINK_NOFOLLOW|AT_NO_AUTOMOUNT, \symlinebreak
+\symlinecont STATX_ALL, {stx_mask=STATX_ALL|STATX_MNT_ID, stx_attributes=0, stx_mode=S_IFREG|0644, \symlinebreak
+\symlinecont stx_size=50008, ...}) = 0
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Formát jmenných konstant a příznaků: \textbf{-X}/\textbf{-{}-const-print-style}}
+\begin{block}{\large strace -e /open cat /dev/null}
+\scriptsize
+\begin{alltt}
+openat(\textcolor{red}{AT_FDCWD}, "/etc/ld.so.cache", \textcolor{red}{O_RDONLY|O_CLOEXEC}) = 3
+openat(\textcolor{red}{AT_FDCWD}, "/lib64/libc.so.6", \textcolor{red}{O_RDONLY|O_CLOEXEC}) = 3
+openat(\textcolor{red}{AT_FDCWD}, "/dev/null", \textcolor{red}{O_RDONLY}) = 3
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+
+\begin{block}{\large strace \textbf{-X verbose} -e /open cat /dev/null}
+\scriptsize
+\begin{alltt}
+openat(\textcolor{red}{-100 /* AT_FDCWD */}, "/etc/ld.so.cache",
+       \textcolor{red}{0x80000 /* O_RDONLY|O_CLOEXEC */}) = 3
+openat(\textcolor{red}{-100 /* AT_FDCWD */}, "/lib64/libc.so.6",
+       \textcolor{red}{0x80000 /* O_RDONLY|O_CLOEXEC */}) = 3
+openat(\textcolor{red}{-100 /* AT_FDCWD */}, "/dev/null", \textcolor{red}{0 /* O_RDONLY */}) = 3
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+
+\begin{block}{\large strace \textbf{-X raw} -e /open cat /dev/null}
+\scriptsize
+\begin{alltt}
+openat(\textcolor{red}{-100}, "/etc/ld.so.cache", \textcolor{red}{0x80000}) = 3
+openat(\textcolor{red}{-100}, "/lib64/libc.so.6", \textcolor{red}{0x80000}) = 3
+openat(\textcolor{red}{-100}, "/dev/null", \textcolor{red}{0})            = 3
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}{Filtrovaní podle návratného stavu systémového volání}
+\begin{block}{\textbf{-e status=\textit{set}}}
+\begin{description}
+	\item[successful]: systémové volání nevrátilo chybu, pseudonym pro \textbf{-z}
+	\item[failed]: systémové volání vrátilo chybu, pseudonym pro \textbf{-Z}
+	\item[unfinished]: systémové volání nevrátilo
+	\item[detached]: proces byl odpojen do návratu systémového volání
+	\item[unavailable]: systémové volání se vrátilo, ale se nepodařilo vyzvednout návratnou hodnotu
+\end{description}
+Standardně je \textbf{-e status}=\textbf{all}.
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Filtrovaní podle návratného stavu systémového volání: \textbf{-z}, \textbf{-Z}}
+\scriptsize
+\begin{block}{env -i LD\_LIBRARY\_PATH=/lib64 strace -z -e\%file /bin/cat < /dev/null}
+\begin{alltt}
+execve("/bin/cat", ["/bin/cat"], 0x7ffc2b781ca0 /* 1 var */) = 0
+openat(AT_FDCWD, "/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\begin{block}{env -i LD\_LIBRARY\_PATH=/lib64 strace -Z -e\%file /bin/cat </dev/null}
+\begin{alltt}
+access("/etc/ld.so.preload", R_OK) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib64/tls/x86_64/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No suc
+stat("/lib64/tls/x86_64/x86_64", 0x7ffdcc6a0c20) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib64/tls/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file
+stat("/lib64/tls/x86_64", 0x7ffdcc6a0c20) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib64/tls/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file
+stat("/lib64/tls/x86_64", 0x7ffdcc6a0c20) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib64/tls/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or dire
+stat("/lib64/tls", 0x7ffdcc6a0c20) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib64/x86_64/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such fi
+stat("/lib64/x86_64/x86_64", 0x7ffdcc6a0c20) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib64/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or d
+stat("/lib64/x86_64", 0x7ffdcc6a0c20) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib64/x86_64/libc.so.6", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or d
+stat("/lib64/x86_64", 0x7ffdcc6a0c20) = -1 ENOENT (No such file or directory)
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Filtrovaní podle návratného stavu systémového volání: agregace u \textbf{-z} \hfill [1/2]}
+\begin{block}{strace -o log -f -e signal=none -e trace=execve,nanosleep \textbackslash \\
+	sh -c 'sleep 0.1 \& sleep 0.2 \& sleep 0.3' \&\& cat log}
+\scriptsize
+\begin{alltt}
+13475 execve("/bin/sh", ["sh", "-c", "sleep 0.1 & sleep 0.2 & sleep 0."...],
+      0x5631be4f87a8 /* 42 vars */) = 0
+13476 execve("/bin/sleep", ["sleep", "0.1"], 0xe4c4f0 /* 33 vars */ <unfinished ...>
+13477 execve("/bin/sleep", ["sleep", "0.2"], 0xe4c4f0 /* 33 vars */ <unfinished ...>
+13478 execve("/bin/sleep", ["sleep", "0.3"], 0xe4c4f0 /* 33 vars */ <unfinished ...>
+13476 <... execve resumed>)             = 0
+13477 <... execve resumed>)             = 0
+13478 <... execve resumed>)             = 0
+13476 nanosleep({tv_sec=0, tv_nsec=100000000},  <unfinished ...>
+13477 nanosleep({tv_sec=0, tv_nsec=200000000},  <unfinished ...>
+13478 nanosleep({tv_sec=0, tv_nsec=300000000},  <unfinished ...>
+13476 <... nanosleep resumed>NULL)      = 0
+13476 +++ exited with 0 +++
+13477 <... nanosleep resumed>NULL)      = 0
+13477 +++ exited with 0 +++
+13478 <... nanosleep resumed>NULL)      = 0
+13478 +++ exited with 0 +++
+13475 +++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Filtrovaní podle návratného stavu systémového volání: agregace u \textbf{-z} \hfill [2/2]}
+\begin{block}{strace -o log \textbf{-z} -f -e signal=none -e trace=execve,nanosleep \textbackslash \\
+	sh -c 'sleep 0.1 \& sleep 0.2 \& sleep 0.3' \&\& cat log}
+\small
+\begin{alltt}
+13475 execve("/bin/sh", ["sh", "-c", "sleep 0.1 & sleep 0.2 & sleep 0."...],
+      0x5631be4f87a8 /* 42 vars */) = 0
+13476 execve("/bin/sleep", ["sleep", "0.1"], 0xe4c4f0 /* 33 vars */) = 0
+13477 execve("/bin/sleep", ["sleep", "0.2"], 0xe4c4f0 /* 33 vars */) = 0
+13478 execve("/bin/sleep", ["sleep", "0.3"], 0xe4c4f0 /* 33 vars */) = 0
+13476 nanosleep({tv_sec=0, tv_nsec=100000000}, NULL) = 0
+13476 +++ exited with 0 +++
+13477 nanosleep({tv_sec=0, tv_nsec=200000000}, NULL) = 0
+13477 +++ exited with 0 +++
+13478 nanosleep({tv_sec=0, tv_nsec=300000000}, NULL) = 0
+13478 +++ exited with 0 +++
+13475 +++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Problémy s filtrací systémových volání}
+\begin{block}{\large glibc: open nebo openat?}
+\begin{alltt}
+glibc-2.25\$ strace -qq \textcolor{red}{-e open} cat /dev/null
+open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+open("/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+open("/dev/null", O_RDONLY)             = 3 \pause
+glibc-2.26\$ strace -qq \textcolor{red}{-e open} cat /dev/null \pause
+glibc-2.26\$ strace -qq \textcolor{red}{-e openat} cat /dev/null
+openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/dev/null", O_RDONLY) = 3 \pause
+glibc-2.25\$ strace -qq \textcolor{red}{-e openat} cat /dev/null
+\end{alltt}
+\end{block}
+\pause
+\begin{block}{\large Tradiční přístup nefunguje na všech architekturách}
+\begin{alltt}
+riscv\$ strace \textcolor{red}{-e open,openat}
+strace: invalid system call 'open'
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Nové možností zadaní filtru systémových volání}
+\begin{block}{\large Rychlé řešení pomocí regulárních výrazů}
+\texttt{\$ strace -e /open}
+\end{block}
+\pause
+\begin{block}{\large Skutečný výsledek rychlého řešení}
+Regulárnímu výrazu \texttt{.*open.*} odpovídají taky následující systémové volání:
+\begin{itemize}
+\item \texttt{mq\_open}
+\item \texttt{open\_by\_handle\_at}
+\item \texttt{perf\_event\_open}
+\end{itemize}
+\end{block}
+\pause
+\begin{block}{\large Přesný regulární výraz}
+\texttt{\$ strace -e '/{\textasciicircum}open(at)?\$'}
+\end{block}
+\pause
+\begin{block}{\large Řešení pomocí volitelné specifikaci systémových volání}
+\texttt{\$ strace -e '?open,?openat'}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Zadání \texttt{argv[0]} prováděného příkazu: \textbf{-{}-argv0=\textit{name}}}
+\begin{block}{strace -{}-argv0=\textcolor{darkred}{insmod} -{}-trace=execve kmod -{}-help}
+\small
+\begin{alltt}
+	execve("/bin/kmod", ["\textcolor{darkred}{insmod}", "--help"], 0x7fffeb80fa58 /* 42 vars */) = 0
+Usage:
+	\textcolor{darkred}{insmod} [options] filename [args]
+Options:
+	-V, --version     show version
+	-h, --help        show this help
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Spuštění jako oddělené vnouče: \textbf{-D}/\textbf{-{}-daemonize}}
+\begin{block}{\large Regulární volání strace}
+\begin{alltt}
+$ echo $$ && strace -e none sh -c 'echo $PPID'
+1234
+23456
++++ exited with 0 +++
+$ echo $$ && strace -e none sh -c 'echo $PPID'
+1234
+23459
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+
+\begin{block}{\large Volání strace jako démona}
+\begin{alltt}
+$ echo $$ && strace \textcolor{red}{-D} -e none sh -c 'echo $PPID'
+1234
+1234
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Další oddělení strace: \textbf{-DD}, \textbf{-DDD}}
+\begin{block}{strace \textbf{-D}}
+\small
+\begin{alltt}
+\$ timeout -s KILL 1 strace \textcolor{darkred}{-D} -e/nanosleep sleep 2
+strace: Process 123457 attached
+clock_nanosleep(CLOCK_REALTIME, 0, \{tv_sec=2, tv_nsec=0\}, Killed
+\end{alltt}
+\end{block}
+
+\begin{block}{strace \textbf{-DD}}
+\small
+\begin{alltt}
+\$ timeout -s KILL 1 strace \textcolor{darkred}{-DD} -e/nanosleep sleep 2
+strace: Process 123457 attached
+clock_nanosleep(CLOCK_REALTIME, 0, \{tv_sec=2, tv_nsec=0\}, <unfinished ...>) = ?
+Killed
++++ killed by SIGKILL +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Filtrovaní systémových volání pomocí seccomp \hfill [1/2]}
+\begin{block}{\textbf{-{}-seccomp-bpf}}
+\small
+\begin{itemize}
+\item Automaticky vytvaruje a připojuje BPF program na filtraci systémových volání
+\item Zrychluje zpracování vyfiltrovaných systémových volání o přibližně stokrát
+\end{itemize}
+\end{block}
+
+\begin{block}{Hanebný příklad s \texttt{dd}}
+\scriptsize
+\begin{alltt}
+\$ dd if=/dev/zero of=/dev/null bs=1 count=1M 2>\&1 | grep -v records
+1048576 bytes (1.0 MB, 1.0 MiB) copied, \textcolor{darkred}{0.281794} s, 3.7 MB/s
+
+\$ strace -f -qq -{}-signal=none -{}-trace=fchdir \textbackslash
+  dd if=/dev/zero of=/dev/null bs=1 count=1M 2>\&1 | grep -v records
+1048576 bytes (1.0 MB, 1.0 MiB) copied, \textcolor{darkred}{13.9573} s, 75.1 kB/s
+
+\$ strace -f -qq -{}-signal=none -{}-trace=fchdir \textcolor{darkgreen}{-{}-seccomp-bpf} \textbackslash
+  dd if=/dev/zero of=/dev/null bs=1 count=1M 2>\&1 | grep -v records
+1048576 bytes (1.0 MB, 1.0 MiB) copied, \textcolor{darkred}{0.307412} s, 3.4 MB/s
+\end{alltt}
+\end{block}
+
+\begin{block}{Porovnání zpomalení}
+$0.307412 / 0.281794 \approx \textcolor{darkred}{1.09}$ \hfill
+$13.9573 / 0.307412 \approx \textcolor{darkred}{45.4}$ \hfill
+$13.9573 / 0.281794 \approx \textcolor{darkred}{49.5}$
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Filtrovaní systémových volání pomocí seccomp \hfill [2/2]}
+\begin{block}{Omezení}
+\begin{itemize}
+	\item Nemá efekt pokud není specifikováno \textbf{-{}-follow-forks} (\textbf{-f})
+	\item Nekompatibilní s \textbf{-{}-syscall-limit=\textit{number}}
+	\item Nekompatibilní s \textbf{-{}-detach-on=\textbf{execve}} (\textbf{-b execve})
+	\item Neplatí pro přípojené pomoci \textbf{-{}-attach=\textit{pid}} (\textbf{-p} \textit{pid}) programy
+\end{itemize}
+\end{block}
+
+\begin{block}{Proč?}
+\begin{itemize}
+	\item Program seccomp BPF, jež nainstalován stracem, používá rozhraní \texttt{SECCOMP\_RET\_TRACE}
+	\item Až nainstalován, seccomp BPF program nemůže být odstraněn
+	\item Když není žádný tracer, \texttt{SECCOMP\_RET\_TRACE} se interpretuje jako \texttt{SECCOMP\_RET\_ERRNO},
+              takže všechny dříve sledované systémové volání selhávají s chybou \texttt{ENOSYS}
+\end{itemize}
+\end{block}
+
+Vzhledem k tomu, že \textbf{-{}-seccomp-bpf} je optimalizace, vypíná se v případech, když nemůže být použit.
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Manipulovaní systémovými voláními: injekce chyb \hfill [1/3]}
+\begin{block}{\large -e \textbf{inject}=\textit{set}:\textbf{error}=\textit{errno}[:\textbf{when}=\textit{expr}][:\textbf{syscall}=\textit{syscall}]}
+\textbf{inject}=\textit{set} -- injekce chyb pro specifikovanou sadu systémových volání \\
+\textbf{error}=\textit{errno} -- kód chyby pro navracení \\
+\textbf{when}=\textit{expr} -- kdy dělat injekci, v podobě \textit{first[..last][+[step]]} \\
+\textbf{syscall}=\textit{syscall} -- injekce specifikovaného systémového volání (ze skupiny \textbf{\%pure}) namísto -1
+\end{block}
+
+\begin{block}{\large strace -e /open -e \textbf{inject}=all:\textbf{error}=EACCES:\textbf{when}=3 \textbackslash\\
+cat /dev/full /dev/null}
+\begin{alltt}
+openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/lib64/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+\textcolor{red}{openat(AT_FDCWD, "/dev/full", O_RDONLY)
+ = -1 EACCES (Permission denied) (INJECTED)}
+cat: /dev/full: Permission denied
+openat(AT_FDCWD, "/dev/null", O_RDONLY) = 3
++++ exited with 1 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Manipulovaní systémovými voláními: injekce chyb \hfill [2/3]}
+\begin{block}{\large Chyba v python3.5: nesprávné zpracovaní chyb otevíraní \texttt{/dev/urandom}}
+\small
+\begin{alltt}
+\$ strace -P /dev/urandom -e inject=\%file:error=ENOENT python3
+\textcolor{red}{openat(AT_FDCWD, "/dev/urandom", O_RDONLY|O_CLOEXEC)
+ = -1 ENOENT (No such file or directory) (INJECTED)}
+Fatal Python error: Failed to open /dev/urandom
+--- SIGSEGV \{si_signo=SIGSEGV, si_code=SEGV_MAPERR, si_addr=0x50\} ---
++++ killed by SIGSEGV +++
+Segmentation fault
+\end{alltt}
+\end{block}
+
+\begin{block}{\large Chyba v python3.5: nesprávné zpracovaní chyb čtení z \texttt{/dev/urandom}}
+\small
+\begin{alltt}
+\$ strace -a0 -e read -P /dev/urandom -e inject=all:error=EIO python3
+\textcolor{red}{read(3, 0x8db610, 24) = -1 EIO (Input/output error) (INJECTED)}
+Fatal Python error: Failed to read bytes from /dev/urandom
+--- SIGSEGV \{si_signo=SIGSEGV, si_code=SEGV_MAPERR, si_addr=0x50\} ---
++++ killed by SIGSEGV +++
+Segmentation fault
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Manipulovaní systémovými voláními: injekce chyb \hfill [3/3]}
+\begin{block}{\large glibc <= 2.25 chyba v dynamickém linkeru}
+\small
+\begin{alltt}
+\$ strace -e mprotect -efault=all:error=EPERM:when=1 pwd
+\textcolor{red}{mprotect(0x7fabcd00f000, 2097152, PROT_NONE)
+ = -1 EPERM (Operation not permitted) (INJECTED)}
+mprotect(0x7fabcd20f000, 16384, PROT_READ) = 0
+mprotect(0x606000, 4096, PROT_READ)     = 0
+mprotect(0x7fabcd441000, 4096, PROT_READ) = 0
+/
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+
+\begin{block}{\large glibc >= 2.26 za správnou kontrolou}
+\small
+\begin{alltt}
+\$ strace -e mprotect -efault=all:error=EPERM:when=1 pwd
+\textcolor{red}{mprotect(0x7fabcd00f000, 2097152, PROT_NONE)
+ = -1 EPERM (Operation not permitted) (INJECTED)}
+pwd: error while loading shared libraries: libc.so.6:
+ cannot change memory protections
++++ exited with 127 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Manipulovaní systémovými voláními: injekce návratnou hodnoty}
+\begin{block}{\large -e \textbf{inject}=\textit{set}:\textbf{retval}=\textit{value}[:\textbf{when}=\textit{expr}][:\textbf{syscall}=\textit{syscall}]}
+\textbf{inject}=\textit{set} -- injekce pro specifikovanou sadu systémových volání \\
+\textbf{retval}=\textit{value} -- návratná hodnota pro navracení \\
+\textbf{when}=\textit{expr} -- kdy dělat injekci, v podobě \textit{first[..last][+[step]]} \\
+\textbf{syscall}=\textit{syscall} -- injekce specifikovaného systémového volání (ze skupiny \textbf{\%pure}) namísto -1
+\end{block}
+
+\begin{block}{\large příklad: uchovaní dočasných souborů}
+\begin{alltt}
+\$ cat script.sh
+t=`mktemp`; trap 'rm -f "$t"' 0; echo secret $$ > $t
+\$ strace -qq -f -e signal=none -e /unlink
+  -e inject=all:retval=0 sh script.sh
+[pid 347] \textcolor{red}{unlinkat(AT_FDCWD, "/tmp/tmp.l1AlwyCYH3", 0) = 0 (INJECTED)}
+\$ cat /tmp/tmp.l1AlwyCYH3
+secret 345
+\end{alltt}
+\end{block}
+
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Manipulovaní systémovými voláními: injekce zdržení}
+\begin{block}{\large injekce zdržení systémového volání}
+strace -e \textbf{inject}=\textit{set}:\textbf{delay\_enter}=\textit{usecs} \\
+strace -e \textbf{inject}=\textit{set}:\textbf{delay\_exit}=\textit{usecs}
+\end{block}
+
+\begin{block}{\large dd if=/dev/zero of=/dev/null bs=1M count=10}
+\begin{alltt}
+10+0 records in
+10+0 records out
+10485760 bytes (10 MB, 10 MiB) copied, \textcolor{red}{0.00211354} s, \textcolor{red}{5.0 GB}/s
+\end{alltt}
+\end{block}
+
+\begin{block}{\large strace -einject=write:delay\_exit=100000 -ewrite -o/dev/null \textbackslash\\
+dd if=/dev/zero of=/dev/null bs=1M count=10}
+\begin{alltt}
+10+0 records in
+10+0 records out
+10485760 bytes (10 MB, 10 MiB) copied, \textcolor{red}{1.10658} s, \textcolor{red}{9.5 MB}/s
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Manipulovaní systémovými voláními: pozměnění pamětí \hfill [1/2]}
+\begin{block}{\large -e \textbf{inject}=\textit{set}:\textbf{poke\_enter}=\textit{@argN=DATAN,@argM=DATAM...}[:\textbf{when}=\textit{expr}]}
+\textbf{inject}=\textit{set} -- injekce pro specifikovanou sadu systémových volání \\
+\textbf{poke\_enter}=\textit{@argN=DATAN,@argM=DATAM,...} -- pozměnění pamětí po ukazateli \texttt{arg\textit{N}} na \texttt{DATAN}, po ukazateli \texttt{arg\textit{M}} na \texttt{DATAM}, a t.d. \\
+\textbf{when}=\textit{expr} -- kdy dělat injekci, v podobě \textit{first[..last][+[step]]} \\
+\end{block}
+
+\begin{block}{strace -P /etc/shadow cat /etc/shadow}
+\begin{alltt}
+openat(AT_FDCWD, "/etc/shadow", O_RDONLY) = -1 EACCES (Permission denied)
+cat: /etc/shadow: Permission denied
++++ exited with 1 +++
+\end{alltt}
+\end{block}
+
+\begin{block}{hex=2F6465762F6E756C6C00 \\ strace -P /etc/shadow --inject=openat:poke\_enter=@arg2=\$hex cat /etc/shadow}
+\begin{alltt}
+openat(AT_FDCWD, "/etc/shadow", O_RDONLY) = 3 (INJECTED: args)
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Manipulovaní systémovými voláními: pozměnění pamětí \hfill [2/2]}
+\begin{block}{\large -e \textbf{inject}=\textit{set}:\textbf{poke\_exit}=\textit{@argN=DATAN,@argM=DATAM...}[:\textbf{when}=\textit{expr}]}
+\textbf{inject}=\textit{set} -- injekce pro specifikovanou sadu systémových volání \\
+\textbf{poke\_exit}=\textit{@argN=DATAN,@argM=DATAM,...} -- pozměnění pamětí po ukazateli \texttt{arg\textit{N}} na \texttt{DATAN}, po ukazateli \texttt{arg\textit{M}} na \texttt{DATAM}, a t.d. \\
+\textbf{when}=\textit{expr} -- kdy dělat injekci, v podobě \textit{first[..last][+[step]]} \\
+\end{block}
+
+
+\begin{block}{strace -s256 -e readlink readlink /etc/localtime}
+\small
+\begin{alltt}
+readlink("/etc/localtime", "../usr/share/zoneinfo/Asia/Jerusalem", 64) = 36
+../usr/share/zoneinfo/Asia/Jerusalem
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+
+\begin{block}{hex=2E2E2F7573722F73686172652F7A6F6E65696E666F2F4574632F555443 \\ strace -e readlink --inject=readlink:retval=29:poke\_exit=@arg2=\$hex \textbackslash \\ readlink /etc/localtime}
+\scriptsize
+\begin{alltt}
+readlink("/etc/localtime", "../usr/share/zoneinfo/Etc/UTC", 64) = 29 (INJECTED: args, retval)
+../usr/share/zoneinfo/Etc/UTC
++++ exited with 0 +++
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Systémový čas, strávený v systémových voláních: \textbf{-c}}
+\begin{block}{\large strace \textbf{-c} sleep 1}
+\small
+\begin{alltt}
+% time  seconds usecs/call calls errors syscall
+------ -------- ---------- ----- ------ ----------
+ 31.45 0.000078         19     4        close
+ 25.40 0.000063         15     4        mprotect
+\textcolor{red}{ 12.90 0.000032         32     1        nanosleep}
+ 11.29 0.000028          5     5        mmap
+  8.47 0.000021          5     4        brk
+  8.06 0.000020         20     1        munmap
+  2.42 0.000006          6     1        arch_prctl
+  0.00 0.000000          0     1        read
+  0.00 0.000000          0     2        fstat
+  0.00 0.000000          0     1      1 access
+  0.00 0.000000          0     1        execve
+  0.00 0.000000          0     2        openat
+------ -------- ---------- ----- ------ ----------
+100.00 0.000248               27      1 total
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Reální čas, strávený v systémových voláních: \textbf{-c -w}}
+\begin{block}{\large strace \textbf{-c -w} sleep 1}
+\small
+\begin{alltt}
+% time  seconds usecs/call calls errors syscall
+------ -------- ---------- ----- ------ ----------
+\textcolor{red}{ 99.91 1.000184    1000183     1        nanosleep}
+  0.04 0.000367        366     1        execve
+  0.02 0.000216         53     4        close
+  0.01 0.000087         17     5        mmap
+  0.01 0.000075         18     4        mprotect
+  0.01 0.000052         13     4        brk
+  0.00 0.000037         18     2        openat
+  0.00 0.000027         26     1        munmap
+  0.00 0.000024         12     2        fstat
+  0.00 0.000019         19     1      1 access
+  0.00 0.000015         14     1        read
+  0.00 0.000013         13     1        arch_prctl
+------ -------- ---------- ----- ------ ----------
+100.00 1.001116               27      1 total
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Nastavení souhrnu volání: \textbf{-{}-summary-columns=\textit{set}}, \textbf{-U \textit{set}} \hfill [1/2]}
+\begin{block}{strace -c cat < /dev/null}
+\small
+\begin{alltt}
+\% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 31.54    0.000205           6        30        13 openat
+ 23.23    0.000151           6        22           mmap
+ 14.00    0.000091           4        19           newfstatat
+ 12.92    0.000084           4        20           close
+  4.46    0.000029           9         3           mprotect
+  4.15    0.000027          13         2           munmap
+  2.46    0.000016           4         4           read
+  1.54    0.000010           3         3           brk
+  0.92    0.000006           6         1           getrandom
+\ldots
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.000650           5       116        15 total
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Nastavení souhrnu volání: \textbf{-{}-summary-columns=\textit{set}}, \textbf{-U \textit{set}} \hfill [2/2]}
+\begin{block}{strace -c -U min-time,max-time,avg-time,calls cat < /dev/null}
+\small
+\begin{alltt}
+shortest  longest  usecs/call     calls syscall
+-------- -------- ----------- --------- ----------------
+0.000000 0.000016           5        30 openat
+0.000000 0.000010           3        22 mmap
+0.000000 0.000019           4        19 newfstatat
+0.000000 0.000005           2        20 close
+0.000009 0.000018          12         3 mprotect
+0.000005 0.000015          10         2 munmap
+0.000000 0.000006           3         4 read
+0.000000 0.000006           3         3 brk
+0.000005 0.000005           5         1 getrandom
+\ldots
+-------- -------- ----------- --------- ----------------
+0.000000 0.000019           4       116 total
+\end{alltt}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Výpis rad a vychytávek: \textbf{-{}-tips} \hfill [1/2]}
+\large
+\begin{block}{strace \textbf{-{}-tips}[=[[\textbf{id}:]\textit{id}],[[\textbf{format}:]\textit{format}]]}
+\begin{itemize}
+\item \textit{id} může být jedním s následujícího:
+\begin{description}
+	\item[\textbf{random}] vypisuje náhodnou radu (implicitní hodnota)
+	\item[\textit{číslo}] vypisuje určenou radu podle specifikovaného čísla
+\end{description}
+\item \textit{format} může být jedním s následujícího:
+\begin{description}
+	\item[\textbf{compact}] vypisuje radu jen dost velkou pro obdržení všeho textu
+	\item[\textbf{full}] vypisuje radu ve své plné kráse
+	\item[\textbf{none}] nevypisuje žádnou radu
+\end{description}
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[fragile]{Výpis rad a vychytávek: \textbf{-{}-tips} \hfill [2/2]}
+\large
+\begin{block}{strace -{}-tips=id:31}
+\begin{alltt}
+ ______________________________________________         ____
+/                                              \textbackslash       /    \textbackslash
+| Medicinal effects of strace can be achieved  |      |-. .-.|
+| by invoking it with the following options:   \textbackslash      (_@)(_@)
+|                                               \textbackslash     .-{}-{}-_  \textbackslash
+|     strace -DDDqqq -enone -{}-signal=none       _\textbackslash   /..   \textbackslash_/
+|                                              /     |__.-^ /
+|                                              |         \}  |
+\textbackslash______________________________________________/        |   [
+                                                        [  ]
+\end{alltt}
+\end{block}
+\pause
+\begin{block}{\url{https://github.com/strace/strace/issues/14}}
+Document how to just get the 'medicinal' effects of strace with no overhead.
+\end{block}
+\end{frame}
+
+%%%%%%%
+{
+\setbeamertemplate{footline}{}
+\begin{frame}{Otázky?}
+	\begin{columns}
+		\column{7cm}
+\begin{block}{\large webové stránky}
+	https://strace.io/
+\end{block}
+\begin{block}{\large strace.git}
+	https://github.com/strace/strace.git
+
+	https://gitlab.com/strace/strace.git
+\end{block}
+\begin{block}{\large mailing list}
+	strace-devel@lists.strace.io
+\end{block}
+\begin{block}{\large IRC kanál}
+	\#strace@OFTC
+\end{block}
+		\column{3cm}
+			\centerline{\includegraphics[height=7cm]{strace-straus.pdf}}
+	\end{columns}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[noframenumbering]{Why is \texttt{strace} slow? \hfill [1/2]}
+\begin{block}{\large \texttt{ptrace(2)}}
+\begin{itemize}
+  \item \texttt{strace} utilizes \texttt{ptrace} infrastructure for tracing
+  \item \texttt{ptrace(2)} is a generic debugging interface that provides
+        a set of commands (\emph{requests}) that enable various operations:
+	reading and writing tracee's memory, obtaining tracee's registers,
+	and so on
+  \item Almost all \texttt{ptrace} operations are performed on a stopped process
+  \item The \texttt{ptrace} API (ab)uses the standard UNIX parent/child
+        signaling over \texttt{waitpid(2)} in order to deliver notifications
+	about changes in tracees' state (including \texttt{ptrace}-induced
+	stops)
+  \item This mechanism is used to notify tracer about all kinds of events:
+        syscall stops (after resume with \texttt{PTRACE\_SYSCALL} request),
+	signal deliveries, group stops, forks, execs, etc.
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[noframenumbering]{Why is \texttt{strace} slow? \hfill [2/2]}
+\begin{block}{\large How \texttt{strace} traces processes}
+\begin{itemize}
+  \item \texttt{strace} is waiting for events in \texttt{wait4(2)}
+  \item Upon receiving a \texttt{ptrace} event, \texttt{strace} tries to figure
+        out what happened (syscall stop, signal received by tracee, etc.)
+  \begin{itemize}
+    \item The only information it has at this point is the status returned
+          by the \texttt{wait4(2)} syscall; as a result, additional
+	  \texttt{PTRACE\_GETEVENTMSG} request is required to distinguish
+	  some of the events
+  \end{itemize}
+  \item For syscall stops, the additional information (syscall number and
+        arguments on entering, return code on exiting) is retrieved
+  \item Syscall-specific decoder function is called, which, in turn, may perform
+        additional reads from tracee's memory for elaborate argument printing
+	(structures, arrays, linked lists...)
+  \item When the decoding is finished, tracee is resumed
+  \item For each syscall, syscall stop is happened twice: on syscall entering
+        and exiting
+\end{itemize}
+\end{block}
+\end{frame}
+
+%%%%%%%
+\begin{frame}[noframenumbering]{seccomp-assisted system call filtering}
+\begin{block}{\large seccomp-bpf usage}
+\begin{itemize}
+  \item \texttt{seccomp} (for Secure Computing) is a Linux mechanism
+        that provides an ability (in its \texttt{SECCOMP\_SET\_MODE\_FILTER}
+        mode) to attach a BPF program to a process
+  \item Since Linux 3.5, a \texttt{seccomp} program has an ability
+        to return \texttt{SECCOMP\_RET\_TRACE} as a result of its execution,
+        which, in turn, notifies \texttt{ptrace}-based tracer with
+        \texttt{PTRACE\_EVENT\_SECCOMP}
+  \item When \texttt{-{}-seccomp-bpf} command-line option is passed
+        to \texttt{strace}, BPF bytecode is generated and attached to tracees,
+        if possible
+  \item The feature has been implemented as part of GSoC 2018 and 2019 projects
+        by Chen Jingpiao and Paul Chaignon, and included
+        in the 5.3 release of \texttt{strace}
+\end{itemize}
+\end{block}
+\end{frame}
+}
+
+\end{document}
